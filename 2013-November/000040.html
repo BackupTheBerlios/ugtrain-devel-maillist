@@ -1,0 +1,159 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] doc: dynmem: correct and enhance discovery
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-November/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20doc%3A%20dynmem%3A%20correct%20and%20enhance%20discovery&In-Reply-To=%3C1383502149-9666-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000041.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] doc: dynmem: correct and enhance discovery</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20doc%3A%20dynmem%3A%20correct%20and%20enhance%20discovery&In-Reply-To=%3C1383502149-9666-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] doc: dynmem: correct and enhance discovery">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Sun Nov  3 19:09:09 CET 2013</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000041.html">[Ugtrain-devel] [PATCH] doc: dynmem: enhance hex dump discovery and	adaption
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#40">[ date ]</a>
+              <a href="thread.html#40">[ thread ]</a>
+              <a href="subject.html#40">[ subject ]</a>
+              <a href="author.html#40">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>It was very important to show this on &quot;Berlin Hack and Tell&quot;.
+It became clear that there is a need for a guide to discover from
+scratch. The questions have shown where to add more details.
+---
+ doc/ugtrain-dynmem.txt | 46 +++++++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 41 insertions(+), 5 deletions(-)
+
+diff --git a/doc/ugtrain-dynmem.txt b/doc/ugtrain-dynmem.txt
+index 8c705bb..00e4b59 100644
+--- a/doc/ugtrain-dynmem.txt
++++ b/doc/ugtrain-dynmem.txt
+@@ -55,7 +55,7 @@ The CLI option '-P' is recommended for dynamic memory cheating. With that
+ libmemhack is preloaded and the game is started automatically. The advantage
+ is that root permissions (for ptrace) aren't required - same process group!
+ 
+-Required config options: &quot;dynmemstart&quot;, &quot;dynmemend&quot;
++Required config options: &quot;dynmemstart&quot;, &quot;dynmemend&quot;, &gt;= one value inside
+ Related config options: &quot;checko&quot;
+ FIFOs: /tmp/memhack_in, /tmp/memhack_out
+ 
+@@ -138,9 +138,24 @@ stages 3 and 4 the &quot;objdump -D&quot;-based symbol lookup is quite slow, we reverse
+ that list and the interesting malloc is at the top. This way you can interrupt
+ the symbol lookup earlier.
+ 
++Discovery preparation:
++
++Write the process name of the game into a config file. The PID is determined
++from that and it must be located in the first line. We use the game Chromium
++B.S.U. 64-bit as an example here.
++
++$ echo &quot;chromium-bsu&quot; &gt; test.conf
++
++Optional:
++
++If the game is not in the PATH env. var., then we can add an absolute path but
++it has to end with the process name.
++
++$ echo &quot;game_path /usr/games/bin/chromium-bsu&quot; &gt;&gt; test.conf
++
+ Example stage 2:
+ 
+-$ ugtrain -D &quot;2&quot; examples/chromium-bsu64.conf
++$ ugtrain -D &quot;2&quot; test.conf
+ ...
+ Memory address (e.g. 0xdeadbeef): 0x87ad8c
+ Searching reverse for 0x87ad8c in discovery output..
+@@ -155,7 +170,7 @@ We also get to know the heap offset.
+ 
+ Example stage 4:
+ 
+-$ ugtrain -D &quot;4;0x0;0x0;288&quot; examples/chromium-bsu64.conf
++$ ugtrain -D &quot;4;0x0;0x0;288&quot; test.conf
+ ...
+ Memory address (e.g. 0xdeadbeef): 0x8a605c
+ Searching reverse for 0x8a605c in discovery output..
+@@ -170,18 +185,39 @@ position is exactly what we are looking for. It is a C++ internal function
+ which calls &quot;malloc&quot; internally. On 32-bit systems it is called &quot;_Znwj&quot;.
+ We can see the reverse stack offset is 0x28. It would be lower if &quot;malloc&quot;
+ would have been called directly from the game binary (e.g. 0x8). We also
+-get to know the code jump back address 0x40f4e7.
++get to know the jump-back code address 0x40f4e7.
+ 
+ That's it! We can write a basic config for the lives in chromium-bsu. We
+-start with a watcher in order to verify that our findings are correct.
++start with a watcher in order to verify that our findings are correct. It
++is often better to use the smallest possible data type. Later it can be
++possibly discovered that a larger type is used. E.g. here when letting
++too many enemies through, the lives are set to -1 (0xffffffff). When hex
++dumping this, we see that we actually have a 32-bit signed integer here.
+ 
+ chromium-bsu
+ dynmemstart HeroAircraft 288 0x40f4e7 0x28
+ Lives 0xbc i32 watch
+ dynmemend
+ 
++See examples/README for the complete config syntax.
++
+ $ ugtrain -P test.conf
+ 
++When being sure, you can add the checks and the wish value, assign one or
++more comma-separated activation keys and set the initial activation state.
++
++...
++Lives 0xbc i32 l 9 1,9 a
++check 0xbc i32 g 0
++...
++
++Here, we want the lives to be updated to 9 only if they are less than 9 and
++also greater than 0. Otherwise, unexpected behaviour could happen. We also
++want to be sure that we are on the correct memory address in case of adaption.
++With the keys '1' and '9' we can toggle the activation of this value. The
++ugtrain uses non-blocking getchar just like the Linux command &quot;top&quot;. In the
++last column the 'a' means that this is activated at trainer start.
++
+ 
+ === Finding more Values in Dynamic Memory ===
+ 
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000041.html">[Ugtrain-devel] [PATCH] doc: dynmem: enhance hex dump discovery and	adaption
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#40">[ date ]</a>
+              <a href="thread.html#40">[ thread ]</a>
+              <a href="subject.html#40">[ subject ]</a>
+              <a href="author.html#40">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

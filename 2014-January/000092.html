@@ -1,0 +1,248 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] linuxhooking: fix calloc crash and prevent	recursion
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2014-January/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20linuxhooking%3A%20fix%20calloc%20crash%20and%20prevent%0A%09recursion&In-Reply-To=%3C1390512287-29786-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000091.html">
+   <LINK REL="Next"  HREF="000093.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] linuxhooking: fix calloc crash and prevent	recursion</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20linuxhooking%3A%20fix%20calloc%20crash%20and%20prevent%0A%09recursion&In-Reply-To=%3C1390512287-29786-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] linuxhooking: fix calloc crash and prevent	recursion">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Thu Jan 23 22:24:47 CET 2014</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000091.html">[Ugtrain-devel] [PATCH] README: update limitations + build info
+</A></li>
+        <LI>Next message: <A HREF="000093.html">[Ugtrain-devel] [PATCH] discovery: simplify ptr-to-heap discovery
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#92">[ date ]</a>
+              <a href="thread.html#92">[ thread ]</a>
+              <a href="subject.html#92">[ subject ]</a>
+              <a href="author.html#92">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Ubuntu 12.04 Precise the calloc hooking crashes. So let's
+implement it more the way like it is described here:
+<A HREF="http://www.slideshare.net/tetsu.koba/tips-of-malloc-free">http://www.slideshare.net/tetsu.koba/tips-of-malloc-free</A>
+
+It requires the recursion prevention mechanism. So we can call e.g.
+malloc within the malloc hook with this.
+---
+ linuxhooking/libmemdisc.c |   30 +++++++++++++++++++++++++-----
+ linuxhooking/libmemhack.c |   31 ++++++++++++++++++++++++++-----
+ 2 files changed, 51 insertions(+), 10 deletions(-)
+
+diff --git a/linuxhooking/libmemdisc.c b/linuxhooking/libmemdisc.c
+index 39ee674..9d7fc46 100644
+--- a/linuxhooking/libmemdisc.c
++++ b/linuxhooking/libmemdisc.c
+@@ -57,6 +57,13 @@
+ #endif
+ 
+ 
++/* Hooking control (avoid recursion)
++ *
++ * For details see:
++ * <A HREF="http://www.slideshare.net/tetsu.koba/tips-of-malloc-free">http://www.slideshare.net/tetsu.koba/tips-of-malloc-free</A>
++ */
++static __thread bool no_hook = false;
++
+ /* File descriptors and output buffer */
+ static i32 ifd = -1;
+ static FILE *ofile = NULL;  /* much data - we need caching */
+@@ -507,13 +514,18 @@ void *malloc (size_t size)
+ 	void *mem_addr;
+ 	static void *(*orig_malloc)(size_t size) = NULL;
+ 
++	if (no_hook)
++		return orig_malloc(size);
++
+ 	/* get the libc malloc function */
++	no_hook = true;
+ 	if (!orig_malloc)
+ 		*(void **) (&amp;orig_malloc) = dlsym(RTLD_NEXT, &quot;malloc&quot;);
+ 
+ 	mem_addr = orig_malloc(size);
+ 
+ 	postprocess_malloc(ffp, size, mem_addr);
++	no_hook = false;
+ 
+ 	return mem_addr;
+ }
+@@ -558,22 +570,23 @@ void *calloc (size_t nmemb, size_t size)
+ 	void *ffp = FIRST_FRAME_POINTER;
+ 	void *mem_addr;
+ 	size_t full_size = nmemb * size;
+-	static bool ready = false;
+ 	static void *(*orig_calloc)(size_t nmemb, size_t size) = NULL;
+ 
+-	if (!ready) {
+-		mem_addr = stat_calloc(full_size);
+-		ready = true;
+-		return mem_addr;
++	if (no_hook) {
++		if (!orig_calloc)
++			return stat_calloc(full_size);
++		return orig_calloc(nmemb, size);
+ 	}
+ 
+ 	/* get the libc calloc function */
++	no_hook = true;
+ 	if (!orig_calloc)
+ 		*(void **) (&amp;orig_calloc) = dlsym(RTLD_NEXT, &quot;calloc&quot;);
+ 
+ 	mem_addr = orig_calloc(nmemb, size);
+ 
+ 	postprocess_malloc(ffp, full_size, mem_addr);
++	no_hook = false;
+ 
+ 	return mem_addr;
+ }
+@@ -587,6 +600,12 @@ void free (void *ptr)
+ 	char obuf[BUF_SIZE];
+ 	static void (*orig_free)(void *ptr) = NULL;
+ 
++	if (no_hook) {
++		orig_free(ptr);
++		return;
++	}
++
++	no_hook = true;
+ 	if (active &amp;&amp; ptr &gt; heap_saddr &amp;&amp; ptr &lt; heap_eaddr) {
+ 		if (stage &gt; 1)
+ 			goto out;
+@@ -604,5 +623,6 @@ out:
+ 		*(void **) (&amp;orig_free) = dlsym(RTLD_NEXT, &quot;free&quot;);
+ 
+ 	orig_free(ptr);
++	no_hook = false;
+ }
+ #endif
+diff --git a/linuxhooking/libmemhack.c b/linuxhooking/libmemhack.c
+index a6b0864..bdf7c13 100644
+--- a/linuxhooking/libmemhack.c
++++ b/linuxhooking/libmemhack.c
+@@ -58,6 +58,14 @@
+ 	# define FIRST_FRAME_POINTER  __builtin_frame_address (0)
+ #endif
+ 
++
++/* Hooking control (avoid recursion)
++ *
++ * For details see:
++ * <A HREF="http://www.slideshare.net/tetsu.koba/tips-of-malloc-free">http://www.slideshare.net/tetsu.koba/tips-of-malloc-free</A>
++ */
++static __thread bool no_hook = false;
++
+ /*
+  * ATTENTION: GNU backtrace() might crash with SIGSEGV!
+  */
+@@ -310,13 +318,18 @@ void *malloc (size_t size)
+ 	void *mem_addr;
+ 	static void *(*orig_malloc)(size_t size) = NULL;
+ 
++	if (no_hook)
++		return orig_malloc(size);
++
+ 	/* get the libc malloc function */
++	no_hook = true;
+ 	if (!orig_malloc)
+ 		*(void **) (&amp;orig_malloc) = dlsym(RTLD_NEXT, &quot;malloc&quot;);
+ 
+ 	mem_addr = orig_malloc(size);
+ 
+ 	postprocess_malloc(ffp, size, mem_addr);
++	no_hook = false;
+ 
+ 	return mem_addr;
+ }
+@@ -361,22 +374,23 @@ void *calloc (size_t nmemb, size_t size)
+ 	void *ffp = FIRST_FRAME_POINTER;
+ 	void *mem_addr;
+ 	size_t full_size = nmemb * size;
+-	static bool ready = false;
+ 	static void *(*orig_calloc)(size_t nmemb, size_t size) = NULL;
+ 
+-	if (!ready) {
+-		mem_addr = stat_calloc(full_size);
+-		ready = true;
+-		return mem_addr;
++	if (no_hook) {
++		if (!orig_calloc)
++			return stat_calloc(full_size);
++		return orig_calloc(nmemb, size);
+ 	}
+ 
+ 	/* get the libc calloc function */
++	no_hook = true;
+ 	if (!orig_calloc)
+ 		*(void **) (&amp;orig_calloc) = dlsym(RTLD_NEXT, &quot;calloc&quot;);
+ 
+ 	mem_addr = orig_calloc(nmemb, size);
+ 
+ 	postprocess_malloc(ffp, full_size, mem_addr);
++	no_hook = false;
+ 
+ 	return mem_addr;
+ }
+@@ -389,6 +403,12 @@ void free (void *ptr)
+ 	i32 i, j, wbytes;
+ 	static void (*orig_free)(void *ptr) = NULL;
+ 
++	if (no_hook) {
++		orig_free(ptr);
++		return;
++	}
++
++	no_hook = true;
+ 	if (active &amp;&amp; ptr != NULL) {
+ 		for (i = 0; config[i] != NULL; i++) {
+ 			if (!config[i]-&gt;mem_addrs)
+@@ -414,5 +434,6 @@ found:
+ 		*(void **) (&amp;orig_free) = dlsym(RTLD_NEXT, &quot;free&quot;);
+ 
+ 	orig_free(ptr);
++	no_hook = false;
+ }
+ #endif
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000091.html">[Ugtrain-devel] [PATCH] README: update limitations + build info
+</A></li>
+	<LI>Next message: <A HREF="000093.html">[Ugtrain-devel] [PATCH] discovery: simplify ptr-to-heap discovery
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#92">[ date ]</a>
+              <a href="thread.html#92">[ thread ]</a>
+              <a href="subject.html#92">[ subject ]</a>
+              <a href="author.html#92">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,145 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 1/4] autotools: don't require multilib	support on 32-bit systems
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-September/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%201/4%5D%20autotools%3A%20don%27t%20require%20multilib%0A%09support%20on%2032-bit%20systems&In-Reply-To=%3C1378078623-4117-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000007.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 1/4] autotools: don't require multilib	support on 32-bit systems</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%201/4%5D%20autotools%3A%20don%27t%20require%20multilib%0A%09support%20on%2032-bit%20systems&In-Reply-To=%3C1378078623-4117-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 1/4] autotools: don't require multilib	support on 32-bit systems">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Mon Sep  2 01:37:03 CEST 2013</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000007.html">[Ugtrain-devel] [PATCH 2/4] libmemhack: fix max_obj calculation
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#6">[ date ]</a>
+              <a href="thread.html#6">[ thread ]</a>
+              <a href="subject.html#6">[ subject ]</a>
+              <a href="author.html#6">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On 32-bit systems it doesn't make sense to require multilib
+support. We can't run the 64-bit compiled code anyway.
+---
+ configure.in             | 10 +---------
+ linuxhooking/Makefile.am | 23 +++++++++++++----------
+ 2 files changed, 14 insertions(+), 19 deletions(-)
+
+diff --git a/configure.in b/configure.in
+index 0940c76..a94a941 100644
+--- a/configure.in
++++ b/configure.in
+@@ -29,15 +29,6 @@ AC_PROG_CC
+ AM_PROG_CC_STDC
+ 
+ case $target in
+-  *i[[3456789]]86*)
+-    TMP_CC=&quot;$CC&quot;
+-    CC=&quot;$CC -m64&quot;
+-    AC_MSG_CHECKING([whether $CC works])
+-    AC_LINK_IFELSE([AC_LANG_PROGRAM()],AC_MSG_RESULT([yes]),
+-                   [AC_MSG_RESULT([no])
+-                    AC_MSG_ERROR([Cannot build a 64-bit program, you need to install 64-bit development libraries.])])
+-    CC=&quot;$TMP_CC&quot;
+-    ;;
+   *x86_64*)
+     TMP_CC=&quot;$CC&quot;
+     CC=&quot;$CC -m32&quot;
+@@ -49,6 +40,7 @@ case $target in
+     ;;
+ esac
+ AM_CONDITIONAL([LINUX], test &quot;$target_os&quot; = &quot;linux-gnu&quot;)
++AM_CONDITIONAL([BITS_64], test &quot;$target_cpu&quot; = &quot;x86_64&quot;)
+ 
+ # Checks for pkg-config.
+ AC_SUBST(DEPS_CFLAGS)
+diff --git a/linuxhooking/Makefile.am b/linuxhooking/Makefile.am
+index a700db1..7234df9 100644
+--- a/linuxhooking/Makefile.am
++++ b/linuxhooking/Makefile.am
+@@ -1,30 +1,33 @@
+ if LINUX
+ 
++if BITS_64
+ lib_LTLIBRARIES = libmemdisc32.la libmemhack32.la \
+                   libmemdisc64.la libmemhack64.la
++else
++lib_LTLIBRARIES = libmemdisc32.la libmemhack32.la
++endif
+ 
+ include_HEADERS =
+ 
+ libmemdisc32_la_SOURCES = libmemdisc.c
+ libmemhack32_la_SOURCES = libmemhack.c
+-libmemdisc64_la_SOURCES = libmemdisc.c
+-libmemhack64_la_SOURCES = libmemhack.c
+-
+ libmemdisc32_la_CFLAGS = $(DEPS_CFLAGS) -m32 -Wall
+ libmemhack32_la_CFLAGS = $(DEPS_CFLAGS) -m32 -Wall
+-libmemdisc64_la_CFLAGS = $(DEPS_CFLAGS) -m64 -Wall
+-libmemhack64_la_CFLAGS = $(DEPS_CFLAGS) -m64 -Wall
+-
+ libmemdisc32_la_LIBADD = $(DEPS_LIBS)
+ libmemhack32_la_LIBADD = $(DEPS_LIBS)
+-libmemdisc64_la_LIBADD = $(DEPS_LIBS)
+-libmemhack64_la_LIBADD = $(DEPS_LIBS)
+-
+ libmemdisc32_la_LDFLAGS =
+ libmemhack32_la_LDFLAGS =
++
++if BITS_64
++libmemdisc64_la_SOURCES = libmemdisc.c
++libmemhack64_la_SOURCES = libmemhack.c
++libmemdisc64_la_CFLAGS = $(DEPS_CFLAGS) -m64 -Wall
++libmemhack64_la_CFLAGS = $(DEPS_CFLAGS) -m64 -Wall
++libmemdisc64_la_LIBADD = $(DEPS_LIBS)
++libmemhack64_la_LIBADD = $(DEPS_LIBS)
+ libmemdisc64_la_LDFLAGS =
+ libmemhack64_la_LDFLAGS =
+-
++endif
+ 
+ bin_PROGRAMS = ugpreload
+ 
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000007.html">[Ugtrain-devel] [PATCH 2/4] libmemhack: fix max_obj calculation
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#6">[ date ]</a>
+              <a href="thread.html#6">[ thread ]</a>
+              <a href="subject.html#6">[ subject ]</a>
+              <a href="author.html#6">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

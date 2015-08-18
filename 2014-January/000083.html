@@ -1,0 +1,283 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 2/7] adapt: unify adaption code
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2014-January/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%202/7%5D%20adapt%3A%20unify%20adaption%20code&In-Reply-To=%3C1389816360-3466-3-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000082.html">
+   <LINK REL="Next"  HREF="000084.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 2/7] adapt: unify adaption code</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%202/7%5D%20adapt%3A%20unify%20adaption%20code&In-Reply-To=%3C1389816360-3466-3-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 2/7] adapt: unify adaption code">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Wed Jan 15 21:05:55 CET 2014</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000082.html">[Ugtrain-devel] [PATCH 1/7] examples: add warzone2100 3.1.0 32-bit	config
+</A></li>
+        <LI>Next message: <A HREF="000084.html">[Ugtrain-devel] [PATCH 3/7] linuxhooking: rename hooking defines
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#83">[ date ]</a>
+              <a href="thread.html#83">[ thread ]</a>
+              <a href="subject.html#83">[ subject ]</a>
+              <a href="author.html#83">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Whether the result should be 3 or 4 lines should be a parameter to
+the common adaption function instead of duplicating code. So change
+it that way. Otherwise code maintenance becomes too difficult.
+---
+ examples/adapt/_common_adapt.sh        |   72 ++++++--------------------------
+ examples/adapt/chromium-bsu_adapt32.sh |    2 +-
+ examples/adapt/chromium-bsu_adapt64.sh |    2 +-
+ examples/adapt/warzone2100_adapt32.sh  |    8 ++--
+ examples/adapt/warzone2100_adapt64.sh  |   12 +++---
+ 5 files changed, 25 insertions(+), 71 deletions(-)
+
+diff --git a/examples/adapt/_common_adapt.sh b/examples/adapt/_common_adapt.sh
+index 04440dc..ee682e2 100644
+--- a/examples/adapt/_common_adapt.sh
++++ b/examples/adapt/_common_adapt.sh
+@@ -10,16 +10,19 @@ CODE=&quot;&quot;
+ OLD_FNAME=&quot;&quot;
+ FUNC_CALLS=&quot;&quot;
+ 
+-function get_malloc_code_3()
++function get_malloc_code()
+ {
+     app_path=&quot;$1&quot;
+     fname=&quot;$2&quot;
+     msize=&quot;$3&quot;
+-    explines=$4
+-    taillines=$5
++    reslines=$4
++    explines=$5
++    taillines=$6
+     isunique=0
+     RC=0
+ 
++    let &quot;alines = $reslines - 1&quot;
++
+     IFS=`printf '\n+'`
+     if [ &quot;$CODE&quot; == &quot;&quot; ]; then
+         if [ $DEBUG -eq 1 ]; then echo &quot;objdump -D $app_path&quot;; fi
+@@ -30,13 +33,13 @@ function get_malloc_code_3()
+         FUNC_CALLS=`echo -e &quot;$CODE&quot; | grep &quot;$fname&quot; -B 2 -A 1`
+         OLD_FNAME=&quot;$fname&quot;
+     fi
+-    if [ $DEBUG -eq 1 ]; then echo &quot;echo -e \$FUNC_CALLS | grep -A 2 $msize&quot;; fi
+-    CODE_PART=`echo -e &quot;$FUNC_CALLS&quot; | grep -A 2 &quot;$msize&quot;`
++    if [ $DEBUG -eq 1 ]; then echo &quot;echo -e \$FUNC_CALLS | grep -A $alines $msize&quot;; fi
++    CODE_PART=`echo -e &quot;$FUNC_CALLS&quot; | grep -A $alines &quot;$msize&quot;`
+     if [ &quot;$CODE_PART&quot; == &quot;&quot; ]; then RC=1; return; fi
+     if [ $DEBUG -eq 1 ]; then echo -e &quot;$CODE_PART&quot;; fi
+ 
+     CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
+-    if [ $CODE_LINES -eq 3 ]; then
++    if [ $CODE_LINES -eq $reslines ]; then
+         isunique=1
+     elif [ $CODE_LINES -ne $explines ]; then
+ 	RC=1; return
+@@ -44,67 +47,18 @@ function get_malloc_code_3()
+ 
+     if [ $isunique -ne 1 ]; then
+         CODE_PART=`echo -e &quot;$CODE_PART&quot; | tail -n $taillines`
+-        CODE_PART=`echo -e &quot;$CODE_PART&quot; | head -n 3`
++        CODE_PART=`echo -e &quot;$CODE_PART&quot; | head -n $reslines`
+ 
+         CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
+-        if [ $CODE_LINES -ne 3 ]; then RC=1; return; fi
++        if [ $CODE_LINES -ne $reslines ]; then RC=1; return; fi
+     fi
+ 
+     CODE_CALL=`echo -e &quot;$CODE_PART&quot; | cut -d '
+-' -f 2 | grep call`
++' -f $alines | grep call`
+     if [ &quot;$CODE_CALL&quot; == &quot;&quot; ]; then RC=1; return; fi
+ 
+     CODE_ADDR=`echo -e &quot;$CODE_PART&quot; | cut -d '
+-' -f 3 | cut -d ':' -f 1 | tr -d [:blank:]`
++' -f $reslines | cut -d ':' -f 1 | tr -d [:blank:]`
+     if [ &quot;$CODE_ADDR&quot; == &quot;&quot; ]; then RC=1; return; fi
+     IFS=''
+ }
+-
+-function get_malloc_code_4()
+-{
+-    app_path=&quot;$1&quot;
+-    fname=&quot;$2&quot;
+-    msize=&quot;$3&quot;
+-    explines=$4
+-    taillines=$5
+-    isunique=0
+-    RC=0
+-
+-    IFS=`printf '\n+'`
+-    if [ &quot;$CODE&quot; == &quot;&quot; ]; then
+-        if [ $DEBUG -eq 1 ]; then echo &quot;objdump -D $app_path&quot;; fi
+-        CODE=`objdump -D &quot;$app_path&quot;`
+-    fi
+-    if [ &quot;$OLD_FNAME&quot; != &quot;$fname&quot; ]; then
+-        if [ $DEBUG -eq 1 ]; then echo &quot;echo -e \$CODE | grep $fname -B 2 -A 1&quot;; fi
+-        FUNC_CALLS=`echo -e &quot;$CODE&quot; | grep &quot;$fname&quot; -B 2 -A 1`
+-        OLD_FNAME=&quot;$fname&quot;
+-    fi
+-    if [ $DEBUG -eq 1 ]; then echo &quot;echo -e \$FUNC_CALLS | grep -A 3 $msize&quot;; fi
+-    CODE_PART=`echo -e &quot;$FUNC_CALLS&quot; | grep -A 3 &quot;$msize&quot;`
+-    if [ &quot;$CODE_PART&quot; == &quot;&quot; ]; then RC=1; return; fi
+-    if [ $DEBUG -eq 1 ]; then echo -e &quot;$CODE_PART&quot;; fi
+-
+-    CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
+-    if [ $CODE_LINES -eq 4 ]; then
+-        isunique=1
+-    elif [ $CODE_LINES -ne $explines ]; then
+-        RC=1; return
+-    fi
+-
+-    if [ $isunique -ne 1 ]; then
+-        CODE_PART=`echo -e &quot;$CODE_PART&quot; | tail -n $taillines`
+-        CODE_PART=`echo -e &quot;$CODE_PART&quot; | head -n 4`
+-
+-        CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
+-        if [ $CODE_LINES -ne 4 ]; then RC=1; return; fi
+-    fi
+-
+-    CODE_CALL=`echo -e &quot;$CODE_PART&quot; | cut -d '
+-' -f 3 | grep call`
+-    if [ &quot;$CODE_CALL&quot; == &quot;&quot; ]; then RC=1; return; fi
+-
+-    CODE_ADDR=`echo -e &quot;$CODE_PART&quot; | cut -d '
+-' -f 4 | cut -d ':' -f 1 | tr -d [:blank:]`
+-    if [ &quot;$CODE_ADDR&quot; == &quot;&quot; ]; then RC=1; return; fi
+-}
+diff --git a/examples/adapt/chromium-bsu_adapt32.sh b/examples/adapt/chromium-bsu_adapt32.sh
+index 99ab994..92161dd 100755
+--- a/examples/adapt/chromium-bsu_adapt32.sh
++++ b/examples/adapt/chromium-bsu_adapt32.sh
+@@ -15,7 +15,7 @@ RC=0
+ 
+ . _common_adapt.sh
+ 
+-get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwj at plt</A>\&gt;&quot; &quot;0x110&quot; 3 3
++get_malloc_code &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwj at plt</A>\&gt;&quot; &quot;0x110&quot; 3 3 3
+ if [ $RC -ne 0 ]; then exit 1; fi
+ 
+ RESULT=`echo &quot;1;HeroAircraft;0x$CODE_ADDR&quot;`
+diff --git a/examples/adapt/chromium-bsu_adapt64.sh b/examples/adapt/chromium-bsu_adapt64.sh
+index 779a3e4..61cb0c5 100755
+--- a/examples/adapt/chromium-bsu_adapt64.sh
++++ b/examples/adapt/chromium-bsu_adapt64.sh
+@@ -15,7 +15,7 @@ RC=0
+ 
+ . _common_adapt.sh
+ 
+-get_malloc_code_4 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x120&quot; 4 4
++get_malloc_code &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x120&quot; 4 4 4
+ if [ $RC -ne 0 ]; then exit 1; fi
+ 
+ RESULT=`echo &quot;1;HeroAircraft;0x$CODE_ADDR&quot;`
+diff --git a/examples/adapt/warzone2100_adapt32.sh b/examples/adapt/warzone2100_adapt32.sh
+index 4f66343..e571fab 100755
+--- a/examples/adapt/warzone2100_adapt32.sh
++++ b/examples/adapt/warzone2100_adapt32.sh
+@@ -15,10 +15,10 @@ RC=0
+ . _common_adapt.sh
+ 
+ if [ &quot;$APP_VERS&quot; == &quot;2.3.8&quot; -o &quot;$APP_VERS&quot; == &quot;2.3.9&quot; ]; then
+-  get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; &quot;0x36c&quot; 3 3
++  get_malloc_code &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; &quot;0x36c&quot; 3 3 3
+   if [ $RC -ne 0 ]; then exit 1; fi
+ else
+-  get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwj at plt</A>\&gt;&quot; &quot;0x2fc,&quot; 3 3
++  get_malloc_code &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwj at plt</A>\&gt;&quot; &quot;0x2fc,&quot; 3 3 3
+   if [ $RC -ne 0 ]; then exit 1; fi
+ fi
+ 
+@@ -27,10 +27,10 @@ CODE_ADDR1=&quot;$CODE_ADDR&quot;
+ ############################################
+ 
+ if [ &quot;$APP_VERS&quot; == &quot;2.3.8&quot; -o &quot;$APP_VERS&quot; == &quot;2.3.9&quot; ]; then
+-  get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; &quot;0x128&quot; 7 7
++  get_malloc_code &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; &quot;0x128&quot; 3 7 7
+   if [ $RC -ne 0 ]; then exit 1; fi
+ else
+-  get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwj at plt</A>\&gt;&quot; &quot;0x16c,&quot; 7 7
++  get_malloc_code &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwj at plt</A>\&gt;&quot; &quot;0x16c,&quot; 3 7 7
+   if [ $RC -ne 0 ]; then exit 1; fi
+ fi
+ 
+diff --git a/examples/adapt/warzone2100_adapt64.sh b/examples/adapt/warzone2100_adapt64.sh
+index 5da81c6..250003e 100755
+--- a/examples/adapt/warzone2100_adapt64.sh
++++ b/examples/adapt/warzone2100_adapt64.sh
+@@ -15,12 +15,12 @@ RC=0
+ . _common_adapt.sh
+ 
+ if [ &quot;$APP_VERS&quot; == &quot;2.3.8&quot; -o &quot;$APP_VERS&quot; == &quot;2.3.9&quot; ]; then
+-    get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; &quot;0x410,&quot; 3 3
++    get_malloc_code &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; &quot;0x410,&quot; 3 3 3
+     if [ $RC -ne 0 ]; then exit 1; fi
+ else
+-    get_malloc_code_4 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x360,&quot; 4 4
++    get_malloc_code &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x360,&quot; 4 4 4
+     if [ $RC -ne 0 ]; then
+-        get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x360,&quot; 3 3
++        get_malloc_code &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x360,&quot; 3 3 3
+         if [ $RC -ne 0 ]; then exit 1; fi
+     fi
+ fi
+@@ -30,12 +30,12 @@ CODE_ADDR1=&quot;$CODE_ADDR&quot;
+ ############################################
+ 
+ if [ &quot;$APP_VERS&quot; == &quot;2.3.8&quot; -o &quot;$APP_VERS&quot; == &quot;2.3.9&quot; ]; then
+-    get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; &quot;0x160,&quot; 7 7
++    get_malloc_code &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; &quot;0x160,&quot; 3 7 7
+     if [ $RC -ne 0 ]; then exit 1; fi
+ else
+-    get_malloc_code_4 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x1a8,&quot; 8 4
++    get_malloc_code &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x1a8,&quot; 4 8 4
+     if [ $RC -ne 0 ]; then
+-        get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x1a8,&quot; 7 7
++        get_malloc_code &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x1a8,&quot; 3 7 7
+         if [ $RC -ne 0 ]; then exit 1; fi
+     fi
+ fi
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000082.html">[Ugtrain-devel] [PATCH 1/7] examples: add warzone2100 3.1.0 32-bit	config
+</A></li>
+	<LI>Next message: <A HREF="000084.html">[Ugtrain-devel] [PATCH 3/7] linuxhooking: rename hooking defines
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#83">[ date ]</a>
+              <a href="thread.html#83">[ thread ]</a>
+              <a href="subject.html#83">[ subject ]</a>
+              <a href="author.html#83">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

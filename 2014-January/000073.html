@@ -1,0 +1,139 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain: handle ptrace() errors gracefully
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2014-January/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20handle%20ptrace%28%29%20errors%20gracefully&In-Reply-To=%3C1388693763-11555-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000074.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain: handle ptrace() errors gracefully</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20handle%20ptrace%28%29%20errors%20gracefully&In-Reply-To=%3C1388693763-11555-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain: handle ptrace() errors gracefully">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Thu Jan  2 21:16:03 CET 2014</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000074.html">[Ugtrain-devel] [PATCH] ugtrain: update victim memory r/w error	messages
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#73">[ date ]</a>
+              <a href="thread.html#73">[ thread ]</a>
+              <a href="subject.html#73">[ subject ]</a>
+              <a href="author.html#73">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>In Warzone 2100 we've noticed issues when reading memory in
+challenge games with a lot of AI players. With this patch it works
+without an issue.
+
+It is also better for running 'scanmem' in parallel. They also
+don't exit upon a ptrace() error. So do it the same way.
+---
+ src/ugtrain.cpp |   14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index 5a6f961..b929ccc 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -481,7 +481,7 @@ static void change_mem_val (pid_t pid, CfgEntry *cfg_en, T value, u8 *buf, void
+ 				if (memread(pid, mem_addr, chk_buf, sizeof(i64)) != 0) {
+ 					cerr &lt;&lt; &quot;PTRACE READ MEMORY ERROR PID[&quot;
+ 					     &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
+-					exit(-1);
++					return;
+ 				}
+ 			}
+ 			for (i = 0; it-&gt;check[i] != CHECK_END; i++) {
+@@ -502,7 +502,7 @@ passed:
+ 
+ 		if (memwrite(pid, mem_addr, buf, sizeof(i64)) != 0) {
+ 			cerr &lt;&lt; &quot;PTRACE WRITE MEMORY ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
+-			exit(-1);
++			return;
+ 		}
+ 	}
+ }
+@@ -532,7 +532,7 @@ static void handle_dynval (pid_t pid, CfgEntry *cfg_en, T read_val,
+ 			if (memread(pid, mem_addr, buf, sizeof(i64)) != 0) {
+ 				cerr &lt;&lt; &quot;PTRACE READ MEMORY ERROR PID[&quot;
+ 				     &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
+-				exit(-1);
++				return;
+ 			}
+ 			*value = *(T *) bufp;
+ 		}
+@@ -654,7 +654,7 @@ static void process_ptrmem (pid_t pid, CfgEntry *cfg_en, u8 *buf, u32 mem_idx)
+ 			if (memread(pid, mem_addr, buf, sizeof(i64)) != 0) {
+ 				cerr &lt;&lt; &quot;PTRACE READ MEMORY ERROR PID[&quot;
+ 				     &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
+-				exit(-1);
++				continue;
+ 			}
+ 			change_memory(pid, cfg_en, buf, cfg_en-&gt;ptrmem-&gt;v_offs[mem_idx],
+ 				      &amp;cfg_en-&gt;v_oldval[mem_idx]);
+@@ -1512,7 +1512,7 @@ prepare_dynmem:
+ 			if (!pid_is_running(pid, opt.proc_name, true))
+ 				return 0;
+ 			cerr &lt;&lt; &quot;PTRACE ATTACH ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
+-			return -1;
++			continue;
+ 		}
+ 
+ 		// TIME CRITICAL! Process all activated config entries
+@@ -1531,7 +1531,7 @@ prepare_dynmem:
+ 					if (memread(pid, mem_addr, buf, sizeof(i64)) != 0) {
+ 						cerr &lt;&lt; &quot;PTRACE READ MEMORY ERROR PID[&quot;
+ 						     &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
+-						return -1;
++						continue;
+ 					}
+ 					if (cfg_en-&gt;ptrtgt)
+ 						process_ptrmem(pid, cfg_en, buf, mem_idx);
+@@ -1546,7 +1546,7 @@ prepare_dynmem:
+ 				if (memread(pid, mem_addr, buf, sizeof(i64)) != 0) {
+ 					cerr &lt;&lt; &quot;PTRACE READ MEMORY ERROR PID[&quot;
+ 					     &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
+-					return -1;
++					continue;
+ 				}
+ 				change_memory(pid, cfg_en, buf, mem_offs, &amp;cfg_en-&gt;old_val);
+ 			}
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000074.html">[Ugtrain-devel] [PATCH] ugtrain: update victim memory r/w error	messages
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#73">[ date ]</a>
+              <a href="thread.html#73">[ thread ]</a>
+              <a href="subject.html#73">[ subject ]</a>
+              <a href="author.html#73">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

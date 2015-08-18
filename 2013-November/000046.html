@@ -1,0 +1,456 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 4/5] ugtrain: Introduce scanmem support
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-November/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%204/5%5D%20ugtrain%3A%20Introduce%20scanmem%20support&In-Reply-To=%3C1383997898-17891-4-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000045.html">
+   <LINK REL="Next"  HREF="000047.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 4/5] ugtrain: Introduce scanmem support</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%204/5%5D%20ugtrain%3A%20Introduce%20scanmem%20support&In-Reply-To=%3C1383997898-17891-4-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 4/5] ugtrain: Introduce scanmem support">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Sat Nov  9 12:51:37 CET 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000045.html">[Ugtrain-devel] [PATCH 3/5] system: do major enhancements for	scanmem
+</A></li>
+        <LI>Next message: <A HREF="000047.html">[Ugtrain-devel] [PATCH 5/5] ugtrain: do not attach memory if no	active config
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#46">[ date ]</a>
+              <a href="thread.html#46">[ thread ]</a>
+              <a href="subject.html#46">[ subject ]</a>
+              <a href="author.html#46">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>We can use scanmem as regular user, now. It is usable in the
+discovery stages 0..4 and with pure static memory together with
+'-P'. We catch the game process if it becomes an orphan and we use
+the chance here to improve discovery and adaption logic as well.
+
+Known issues:
+
+Scanmem reads the available memory regions only once upon start
+and only searches in these. So the first time the intersting
+object is visible, the scanmem command 'reset' has to be entered.
+---
+ src/options.c   |   19 ++++--
+ src/options.h   |    3 +
+ src/ugtrain.cpp |  181 +++++++++++++++++++++++++++++++++++++++++++++++++------
+ 3 files changed, 179 insertions(+), 24 deletions(-)
+
+diff --git a/src/options.c b/src/options.c
+index 4736816..db36616 100644
+--- a/src/options.c
++++ b/src/options.c
+@@ -24,7 +24,7 @@
+ #define LIB_END   &quot;.so&quot;
+ 
+ const char Help[] =
+-PROG_NAME &quot; is an advanced universal game trainer for the CLI\n&quot;
++PROG_NAME &quot; is the universal elite game trainer for the CLI\n&quot;
+ &quot;\n&quot;
+ &quot;Usage: &quot; PROG_NAME &quot; [opts] &lt;config_path&gt;\n&quot;
+ &quot;\n&quot;
+@@ -40,9 +40,11 @@ PROG_NAME &quot; is an advanced universal game trainer for the CLI\n&quot;
+ &quot;			library - without \'-P\' \'-P &quot;
+ 				LDISC_PRE &quot;32/64&quot; LIB_END &quot;\'\n&quot;
+ &quot;			is assumed depending on \'sizeof(long)\'\n&quot;
+-&quot;--adapt, -A:		run the adaption script from config to determine\n&quot;
++&quot;--scanmem, -S:		run \'scanmem\' without/together with \'-D\' in the\n&quot;
++&quot;			same process group as the game (avoid root access)\n&quot;
++&quot;--adapt, -A:		run the adaption script from the config to determine\n&quot;
+ &quot;			code addresses and their stack offsets - without\n&quot;
+-&quot;			\'-D\' discovery step 5 (finding stack offset) is\n&quot;
++&quot;			\'-D\' discovery stage 5 (finding stack offset) is\n&quot;
+ &quot;			assumed	using the new code address (rejects if root)\n&quot;
+ &quot;--pre-cmd=&lt;str&gt;:	together with \'-P\' it is possible to specify a\n&quot;
+ &quot;			custom preloader command like \'&quot; GLC_PRELOADER &quot;\'\n&quot;
+@@ -57,12 +59,13 @@ void usage()
+ 	exit(-1);
+ }
+ 
+-static const char short_options[] = &quot;-hAD:P::&quot;;
++static const char short_options[] = &quot;-hAD:P::S&quot;;
+ static struct option long_options[] = {
+ 	{&quot;help&quot;,           0, 0, 'h'},
+ 	{&quot;adapt&quot;,          0, 0, 'A'},
+ 	{&quot;discover&quot;,       1, 0, 'D'},
+ 	{&quot;preload&quot;,        2, 0, 'P'},
++	{&quot;scanmem&quot;,        0, 0, 'S'},
+ 	{&quot;pre-cmd&quot;,        1, 0,  0 },
+ 	{&quot;glc&quot;,            2, 0,  0 },
+ 	{0, 0, 0, 0}
+@@ -78,6 +81,9 @@ void use_libmemhack (struct app_options *opt)
+ 
+ void do_assumptions (struct app_options *opt)
+ {
++	/* '-D 1 -A' --&gt; '-D 1', '-S -A' --&gt; '-S'  */
++	if ((opt-&gt;disc_str &amp;&amp; opt-&gt;disc_str[0] != '5') || opt-&gt;run_scanmem)
++		opt-&gt;do_adapt = false;
+ 	/* '-A' --&gt; '-A -D 5' */
+ 	if (opt-&gt;do_adapt) {
+ 		if (!opt-&gt;disc_str)
+@@ -101,6 +107,7 @@ static void init_options (struct app_options *opt)
+ 	opt-&gt;do_adapt = false;
+ 	opt-&gt;preload_lib = NULL;
+ 	opt-&gt;disc_str = NULL;
++	opt-&gt;run_scanmem = false;
+ 	opt-&gt;pre_cmd = NULL;
+ 	opt-&gt;use_glc = false;
+ 	/* no direct CLI input */
+@@ -112,6 +119,7 @@ static void init_options (struct app_options *opt)
+ 	opt-&gt;adp_req_line = 0;
+ 	opt-&gt;use_gbt = false;
+ 	opt-&gt;disc_addr = NULL;
++	opt-&gt;scanmem_pid = -1;
+ }
+ 
+ void parse_options (i32 argc, char **argv, struct app_options *opt)
+@@ -158,6 +166,9 @@ void parse_options (i32 argc, char **argv, struct app_options *opt)
+ 			else
+ 				opt-&gt;preload_lib = optarg;
+ 			break;
++		case 'S':
++			opt-&gt;run_scanmem = true;
++			break;
+ 		default:
+ 			if (optind != argc) {
+ 				if (prev_ch == 'P')
+diff --git a/src/options.h b/src/options.h
+index d600ffb..784be3f 100644
+--- a/src/options.h
++++ b/src/options.h
+@@ -23,11 +23,13 @@
+ #define PROG_NAME  &quot;ugtrain&quot;
+ #define PRELOADER  &quot;ugpreload&quot;
+ #define GLC_PRELOADER &quot;glc-capture&quot;
++#define SCANMEM    &quot;scanmem&quot;
+ 
+ struct app_options {
+ 	bool	do_adapt;
+ 	char	*preload_lib;
+ 	char	*disc_str;
++	bool	run_scanmem;
+ 	char	*pre_cmd;
+ 	bool	use_glc;
+ 	/* no direct CLI input */
+@@ -39,6 +41,7 @@ struct app_options {
+ 	char	*game_path;
+ 	bool	use_gbt;
+ 	void	*disc_addr;
++	pid_t	scanmem_pid;
+ };
+ 
+ #ifdef __cplusplus
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index a388b31..b58b7db 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -465,11 +465,31 @@ static void change_memory (pid_t pid, CfgEntry *cfg_en, u8 *buf,
+ 	}
+ }
+ 
++/*
++ * The function run_pgrp_bg() is so hacky OS security
++ * bypassing so that it is not possible to wait for the
++ * child process (the game) in a regular way. We have
++ * to do that here in an equal hacky way as the process
++ * belongs to init.
++ */
++static void catch_orphan (char *proc_name)
++{
++	pid_t pid;
++
++	while (1) {
++		pid = proc_to_pid(proc_name);
++		if (pid &lt; 0)
++			return;
++		sleep_sec(1);
++	}
++}
++
+ static i32 run_game (struct app_options *opt)
+ {
+ 	pid_t pid = -1;
+-	const char *cmd;
+-	char *cmdv[2];
++	const char *cmd, *pcmd;
++	char *cmdv[2], *pcmdv[4];
++	char pid_str[12] = { '\0' };
+ 	string cmd_str = string(&quot;&quot;);
+ 
+ 	if (!opt-&gt;pre_cmd) {
+@@ -478,9 +498,29 @@ static i32 run_game (struct app_options *opt)
+ 		cmdv[0] = opt-&gt;game_path;
+ 		cmdv[1] = NULL;
+ 
+-		cout &lt;&lt; &quot;$ &quot; &lt;&lt; cmdv[0] &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
++		if (opt-&gt;run_scanmem) {
++			restore_getch();
++
++			pcmd = (const char *) SCANMEM;
++			pcmdv[0] = (char *) SCANMEM;
++			pcmdv[1] = (char *) &quot;-p&quot;;
++			pcmdv[2] = pid_str;
++			pcmdv[3] = NULL;
+ 
+-		pid = run_cmd_bg(cmd, cmdv, false, false);
++			cout &lt;&lt; &quot;$ &quot; &lt;&lt; pcmdv[0] &lt;&lt; &quot; &quot; &lt;&lt; pcmdv[1]
++			     &lt;&lt; &quot; `pidof -s &quot; &lt;&lt; opt-&gt;proc_name &lt;&lt; &quot;` &amp; --&gt; &quot;
++			     &lt;&lt; &quot;$ &quot; &lt;&lt; cmdv[0] &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
++
++			pid = run_pgrp_bg(pcmd, pcmdv, cmd, cmdv,
++					  pid_str, opt-&gt;proc_name, 3,
++					  false, false);
++			if (pid &gt; 0)
++				opt-&gt;scanmem_pid = pid;
++		} else {
++			cout &lt;&lt; &quot;$ &quot; &lt;&lt; cmdv[0] &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
++
++			pid = run_cmd_bg(cmd, cmdv, false, false);
++		}
+ 	} else {
+ 		if (opt-&gt;use_glc) {
+ 			cmd_str += GLC_PRELOADER;
+@@ -491,9 +531,29 @@ static i32 run_game (struct app_options *opt)
+ 		cmd_str += opt-&gt;game_path;
+ 		cmd = cmd_str.c_str();
+ 
+-		cout &lt;&lt; &quot;$ &quot; &lt;&lt; cmd &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
++		if (opt-&gt;run_scanmem) {
++			restore_getch();
++
++			pcmd = (const char *) SCANMEM;
++			pcmdv[0] = (char *) SCANMEM;
++			pcmdv[1] = (char *) &quot;-p&quot;;
++			pcmdv[2] = pid_str;
++			pcmdv[3] = NULL;
+ 
+-		pid = run_cmd_bg(cmd, cmdv, false, true);
++			cout &lt;&lt; &quot;$ &quot; &lt;&lt; pcmdv[0] &lt;&lt; &quot; &quot; &lt;&lt; pcmdv[1]
++			     &lt;&lt; &quot; `pidof -s &quot; &lt;&lt; opt-&gt;proc_name &lt;&lt; &quot;` &amp; --&gt; &quot;
++			     &lt;&lt; &quot;$ &quot; &lt;&lt; cmd &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
++
++			pid = run_pgrp_bg(pcmd, pcmdv, cmd, cmdv,
++					  pid_str, opt-&gt;proc_name, 3,
++					  false, true);
++			if (pid &gt; 0)
++				opt-&gt;scanmem_pid = pid;
++		} else {
++			cout &lt;&lt; &quot;$ &quot; &lt;&lt; cmd &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
++
++			pid = run_cmd_bg(cmd, cmdv, false, true);
++		}
+ 	}
+ 	if (pid &lt; 0)
+ 		goto err;
+@@ -507,9 +567,10 @@ err:
+ #ifdef __linux__
+ static i32 run_preloader (struct app_options *opt)
+ {
+-	pid_t pid;
+-	const char *cmd;
+-	char *cmdv[4];
++	pid_t pid = -1;
++	const char *cmd, *pcmd;
++	char *cmdv[4], *pcmdv[4];
++	char pid_str[12] = { '\0' };
+ 	string cmd_str = string(&quot;&quot;);
+ 
+ 	if (!opt-&gt;pre_cmd) {
+@@ -520,10 +581,32 @@ static i32 run_preloader (struct app_options *opt)
+ 		cmdv[2] = opt-&gt;game_path;
+ 		cmdv[3] = NULL;
+ 
+-		cout &lt;&lt; &quot;$ &quot; &lt;&lt; cmdv[0] &lt;&lt; &quot; &quot; &lt;&lt; cmdv[1]
+-		     &lt;&lt; &quot; &quot; &lt;&lt; cmdv[2] &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
++		if (opt-&gt;run_scanmem &amp;&amp;
++		    (!opt-&gt;disc_str || opt-&gt;disc_str[0] != '5')) {
++			restore_getch();
++
++			pcmd = (const char *) SCANMEM;
++			pcmdv[0] = (char *) SCANMEM;
++			pcmdv[1] = (char *) &quot;-p&quot;;
++			pcmdv[2] = pid_str;
++			pcmdv[3] = NULL;
++
++			cout &lt;&lt; &quot;$ &quot; &lt;&lt; pcmdv[0] &lt;&lt; &quot; &quot; &lt;&lt; pcmdv[1]
++			     &lt;&lt; &quot; `pidof -s &quot; &lt;&lt; opt-&gt;proc_name &lt;&lt; &quot;` &amp; --&gt; &quot;
++			     &lt;&lt; &quot;$ &quot; &lt;&lt; cmdv[0] &lt;&lt; &quot; &quot; &lt;&lt; cmdv[1]
++			     &lt;&lt; &quot; &quot; &lt;&lt; cmdv[2] &lt;&lt;&quot; &amp;&quot; &lt;&lt; endl;
++
++			pid = run_pgrp_bg(pcmd, pcmdv, cmd, cmdv,
++					  pid_str, opt-&gt;proc_name, 3,
++					  false, false);
++			if (pid &gt; 0)
++				opt-&gt;scanmem_pid = pid;
++		} else {
++			cout &lt;&lt; &quot;$ &quot; &lt;&lt; cmdv[0] &lt;&lt; &quot; &quot; &lt;&lt; cmdv[1]
++			     &lt;&lt; &quot; &quot; &lt;&lt; cmdv[2] &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
+ 
+-		pid = run_cmd_bg(cmd, cmdv, false, false);
++			pid = run_cmd_bg(cmd, cmdv, false, false);
++		}
+ 	} else {
+ 		if (opt-&gt;use_glc) {
+ 			cmd_str += GLC_PRELOADER;
+@@ -538,9 +621,30 @@ static i32 run_preloader (struct app_options *opt)
+ 		cmd_str += opt-&gt;game_path;
+ 		cmd = cmd_str.c_str();
+ 
+-		cout &lt;&lt; &quot;$ &quot; &lt;&lt; cmd &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
++		if (opt-&gt;run_scanmem &amp;&amp;
++		    (!opt-&gt;disc_str || opt-&gt;disc_str[0] != '5')) {
++			restore_getch();
++
++			pcmd = (const char *) SCANMEM;
++			pcmdv[0] = (char *) SCANMEM;
++			pcmdv[1] = (char *) &quot;-p&quot;;
++			pcmdv[2] = pid_str;
++			pcmdv[3] = NULL;
++
++			cout &lt;&lt; &quot;$ &quot; &lt;&lt; pcmdv[0] &lt;&lt; &quot; &quot; &lt;&lt; pcmdv[1]
++			     &lt;&lt; &quot; `pidof -s &quot; &lt;&lt; opt-&gt;proc_name &lt;&lt; &quot;` &amp; --&gt; &quot;
++			     &lt;&lt; &quot;$ &quot; &lt;&lt; cmd &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
++
++			pid = run_pgrp_bg(pcmd, pcmdv, cmd, cmdv,
++					  pid_str, opt-&gt;proc_name, 3,
++					  false, true);
++			if (pid &gt; 0)
++				opt-&gt;scanmem_pid = pid;
++		} else {
++			cout &lt;&lt; &quot;$ &quot; &lt;&lt; cmd &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
+ 
+-		pid = run_cmd_bg(cmd, cmdv, false, true);
++			pid = run_cmd_bg(cmd, cmdv, false, true);
++		}
+ 	}
+ 	if (pid &lt; 0)
+ 		goto err;
+@@ -888,7 +992,7 @@ i32 main (i32 argc, char **argv, char **env)
+ 		cout &lt;&lt; &quot;Found config for \&quot;&quot; &lt;&lt; opt.proc_name &lt;&lt; &quot;\&quot;.&quot; &lt;&lt; endl;
+ 	} else {
+ 		cfg_path = new string(&quot;NONE&quot;);
+-		if (!opt.disc_str ||
++		if (!(opt.disc_str || opt.run_scanmem) ||
+ 		    (opt.disc_str[0] &lt; '0' || opt.disc_str[0] &gt; '4')) {
+ 			cerr &lt;&lt; &quot;Error: Config required!&quot; &lt;&lt; endl;
+ 			return -1;
+@@ -900,9 +1004,21 @@ i32 main (i32 argc, char **argv, char **env)
+ 		opt.proc_name = to_c_str(&amp;input_str);
+ 	}
+ 
+-	if (opt.disc_str &amp;&amp;
+-	    (opt.disc_str[0] &gt;= '0' &amp;&amp; opt.disc_str[0] &lt;= '4'))
++	if (opt.disc_str) {
++		if (opt.disc_str[0] &gt;= '0' &amp;&amp; opt.disc_str[0] &lt;= '4') {
++			cout &lt;&lt; &quot;Clearing config for discovery!&quot; &lt;&lt; endl;
++			cfg.clear();
++			cfg_act-&gt;clear();
++			emptycfg = true;
++		} else {
++			opt.run_scanmem = false;
++		}
++	} else if (opt.run_scanmem) {
++		cout &lt;&lt; &quot;Clearing config for scanmem!&quot; &lt;&lt; endl;
++		cfg.clear();
++		cfg_act-&gt;clear();
+ 		emptycfg = true;
++	}
+ 
+ 	if (!opt.game_path)
+ 		opt.game_path = get_abs_app_path(opt.proc_name);
+@@ -921,7 +1037,8 @@ i32 main (i32 argc, char **argv, char **env)
+ 		return -1;
+ 	}
+ 
+-	if (opt.adp_required &amp;&amp; !opt.do_adapt) {
++	if (opt.adp_required &amp;&amp; !opt.do_adapt &amp;&amp; !opt.disc_str &amp;&amp;
++	    !opt.run_scanmem) {
+ 		if (!opt.adp_script) {
+ 			cerr &lt;&lt; &quot;Error, adaption required but no adaption script!&quot; &lt;&lt; endl;
+ 			return -1;
+@@ -993,9 +1110,24 @@ prepare_dynmem:
+ 
+ 	if (opt.disc_str) {
+ 		pmask = PARSE_M | PARSE_S | PARSE_C | PARSE_O;
+-		if (opt.disc_str[0] &gt;= '1' &amp;&amp; opt.disc_str[0] &lt;= '4') {
++		if (opt.disc_str[0] == '0') {
++			if (opt.scanmem_pid &gt; 0) {
++				wait_proc(opt.scanmem_pid);
++				// Have you closed scanmem before the game?
++				catch_orphan(opt.proc_name);
++			} else {
++				wait_proc(pid);
++			}
++			return 0;
++		} else if (opt.disc_str[0] &gt;= '1' &amp;&amp; opt.disc_str[0] &lt;= '4') {
+ 			worker_pid = fork_proc(run_stage1234_loop, &amp;ifd);
+-			wait_proc(pid);
++			if (opt.scanmem_pid &gt; 0) {
++				wait_proc(opt.scanmem_pid);
++				// Have you closed scanmem before the game?
++				catch_orphan(opt.proc_name);
++			} else {
++				wait_proc(pid);
++			}
+ 			kill_proc(worker_pid);
+ 			if (worker_pid &lt; 0)
+ 				return -1;
+@@ -1014,7 +1146,16 @@ prepare_dynmem:
+ 		default:
+ 			break;
+ 		}
++	} else if (opt.scanmem_pid &gt; 0) {
++		wait_proc(opt.scanmem_pid);
++		// Have you closed scanmem before the game?
++		catch_orphan(opt.proc_name);
++		return 0;
+ 	}
++
++	if (opt.do_adapt || opt.disc_str || opt.run_scanmem)
++		return -1;
++
+ 	set_getch_nb(1);
+ 
+ 	if (memattach_test(pid) != 0) {
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000045.html">[Ugtrain-devel] [PATCH 3/5] system: do major enhancements for	scanmem
+</A></li>
+	<LI>Next message: <A HREF="000047.html">[Ugtrain-devel] [PATCH 5/5] ugtrain: do not attach memory if no	active config
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#46">[ date ]</a>
+              <a href="thread.html#46">[ thread ]</a>
+              <a href="subject.html#46">[ subject ]</a>
+              <a href="author.html#46">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

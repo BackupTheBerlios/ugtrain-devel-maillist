@@ -1,0 +1,148 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain: introduce output_mem_val(),	fix float printing
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-August/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20introduce%20output_mem_val%28%29%2C%0A%09fix%20float%20printing&In-Reply-To=%3C1377671613-3786-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000001.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain: introduce output_mem_val(),	fix float printing</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20introduce%20output_mem_val%28%29%2C%0A%09fix%20float%20printing&In-Reply-To=%3C1377671613-3786-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain: introduce output_mem_val(),	fix float printing">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Wed Aug 28 08:33:33 CEST 2013</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000001.html">[Ugtrain-devel] [PATCH 1/3] README: update dynamic memory features	and general info
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#0">[ date ]</a>
+              <a href="thread.html#0">[ thread ]</a>
+              <a href="subject.html#0">[ subject ]</a>
+              <a href="author.html#0">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>We ensure that old float values are displayed correctly in HEX.
+This is how they are stored in memory and (if dumped) on disk.
+This gives us a lot more flexibility and less confusion.
+---
+ src/ugtrain.cpp |   54 +++++++++++++++++++++++++++++++++++++++---------------
+ 1 file changed, 39 insertions(+), 15 deletions(-)
+
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index c93f1b7..211bcf3 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -246,6 +246,44 @@ static void toggle_cfg (list&lt;CfgEntry*&gt; *cfg, list&lt;CfgEntry*&gt; *cfg_act)
+ 	}
+ }
+ 
++static void output_mem_val (CfgEntry *cfg_en, void *mem_offs, bool is_dynmem)
++{
++	double tmp_dval;
++	float  tmp_fval;
++	i32 hexfloat;
++
++	if (is_dynmem &amp;&amp; cfg_en-&gt;dynmem-&gt;v_maddr.size() &gt; 1)
++		cout &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot;[&quot; &lt;&lt; cfg_en-&gt;dynmem-&gt;pridx &lt;&lt; &quot;]&quot;
++		     &lt;&lt; &quot; at &quot; &lt;&lt; hex &lt;&lt; PTR_ADD(void *, cfg_en-&gt;addr, mem_offs)
++		     &lt;&lt; &quot;, Data: 0x&quot;;
++	else
++		cout &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot; at &quot; &lt;&lt; hex
++		     &lt;&lt; PTR_ADD(void *, cfg_en-&gt;addr, mem_offs)
++		     &lt;&lt; &quot;, Data: 0x&quot;;
++
++	if (cfg_en-&gt;is_float) {
++		memcpy(&amp;tmp_dval, &amp;cfg_en-&gt;old_val, sizeof(i64));
++		if (cfg_en-&gt;size == 32) {
++			tmp_fval = (float) tmp_dval;
++			memcpy(&amp;hexfloat, &amp;tmp_fval, sizeof(i32));
++			cout &lt;&lt; hex &lt;&lt; hexfloat;
++		} else {
++			cout &lt;&lt; hex &lt;&lt; (i64) cfg_en-&gt;old_val;
++		}
++		cout &lt;&lt; &quot; (&quot; &lt;&lt; dec &lt;&lt; tmp_dval &lt;&lt; &quot;)&quot; &lt;&lt; endl;
++	} else {
++		if (cfg_en-&gt;size == 64)
++			cout &lt;&lt; hex &lt;&lt; (i64) cfg_en-&gt;old_val;
++		else
++			cout &lt;&lt; hex &lt;&lt; (i32) cfg_en-&gt;old_val;
++
++		if (cfg_en-&gt;is_signed)
++			cout &lt;&lt; &quot; (&quot; &lt;&lt; dec &lt;&lt; cfg_en-&gt;old_val &lt;&lt; &quot;)&quot; &lt;&lt; endl;
++		else
++			cout &lt;&lt; &quot; (&quot; &lt;&lt; dec &lt;&lt; (u64) cfg_en-&gt;old_val &lt;&lt; &quot;)&quot; &lt;&lt; endl;
++	}
++}
++
+ template &lt;typename T&gt;
+ static inline i32 check_mem_val (T value, u8 *chk_buf, i32 check)
+ {
+@@ -758,7 +796,6 @@ i32 main (i32 argc, char **argv, char **env)
+ 	u8 buf[sizeof(i64)] = { 0 };
+ 	i32 ret, pmask = PARSE_M | PARSE_C;
+ 	char ch;
+-	double tmp_dval;
+ 	i32 ifd = -1, ofd = -1;
+ 	struct app_options opt;
+ 	u8 emptycfg = 0;
+@@ -1023,20 +1060,7 @@ prepare_dynmem:
+ 			} else {
+ 				mem_offs = NULL;
+ 			}
+-			if (is_dynmem)
+-				cout &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot;[&quot; &lt;&lt; cfg_en-&gt;dynmem-&gt;pridx &lt;&lt; &quot;]&quot;
+-				     &lt;&lt; &quot; at &quot; &lt;&lt; hex &lt;&lt; PTR_ADD(void *, cfg_en-&gt;addr, mem_offs)
+-				     &lt;&lt; &quot;, Data: 0x&quot; &lt;&lt; (i64) cfg_en-&gt;old_val &lt;&lt; dec;
+-			else
+-				cout &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot; at &quot; &lt;&lt; hex
+-				     &lt;&lt; PTR_ADD(void *, cfg_en-&gt;addr, mem_offs)
+-				     &lt;&lt; &quot;, Data: 0x&quot; &lt;&lt; (i64) cfg_en-&gt;old_val &lt;&lt; dec;
+-			if (cfg_en-&gt;is_float) {
+-				memcpy(&amp;tmp_dval, &amp;cfg_en-&gt;old_val, sizeof(i64));
+-				cout &lt;&lt; &quot; (&quot; &lt;&lt; tmp_dval &lt;&lt; &quot;)&quot; &lt;&lt; endl;
+-			} else {
+-				cout &lt;&lt; &quot; (&quot; &lt;&lt; cfg_en-&gt;old_val &lt;&lt; &quot;)&quot; &lt;&lt; endl;
+-			}
++			output_mem_val(cfg_en, mem_offs, is_dynmem);
+ 		}
+ 
+ 	}
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000001.html">[Ugtrain-devel] [PATCH 1/3] README: update dynamic memory features	and general info
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#0">[ date ]</a>
+              <a href="thread.html#0">[ thread ]</a>
+              <a href="subject.html#0">[ subject ]</a>
+              <a href="author.html#0">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

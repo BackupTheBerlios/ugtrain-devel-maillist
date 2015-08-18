@@ -1,0 +1,125 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 2/5] system: add kill_proc() and wait_proc()
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-November/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%202/5%5D%20system%3A%20add%20kill_proc%28%29%20and%20wait_proc%28%29&In-Reply-To=%3C1383997898-17891-2-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000043.html">
+   <LINK REL="Next"  HREF="000045.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 2/5] system: add kill_proc() and wait_proc()</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%202/5%5D%20system%3A%20add%20kill_proc%28%29%20and%20wait_proc%28%29&In-Reply-To=%3C1383997898-17891-2-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 2/5] system: add kill_proc() and wait_proc()">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Sat Nov  9 12:51:35 CET 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000043.html">[Ugtrain-devel] [PATCH 1/5] system: return the pid in run_cmd_bg()
+</A></li>
+        <LI>Next message: <A HREF="000045.html">[Ugtrain-devel] [PATCH 3/5] system: do major enhancements for	scanmem
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#44">[ date ]</a>
+              <a href="thread.html#44">[ thread ]</a>
+              <a href="subject.html#44">[ subject ]</a>
+              <a href="author.html#44">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>---
+ src/system.h   |    2 ++
+ src/system_l.c |   12 ++++++++++++
+ src/system_w.c |    8 ++++++++
+ 3 files changed, 22 insertions(+)
+
+diff --git a/src/system.h b/src/system.h
+index 9cd33ba..cde8e93 100644
+--- a/src/system.h
++++ b/src/system.h
+@@ -46,6 +46,8 @@ extern &quot;C&quot; {
+ 	ssize_t run_cmd_pipe (const char *cmd, char *const cmdv[],
+ 			      char *pbuf, size_t pbuf_size, bool use_shell);
+ 	i32     fork_wait_kill (pid_t wpid, void (*task) (void *), void *argp);
++	void    kill_proc (pid_t pid);
++	void    wait_proc (pid_t pid);
+ #ifdef __cplusplus
+ };
+ #endif
+diff --git a/src/system_l.c b/src/system_l.c
+index 08737fc..19827a8 100644
+--- a/src/system_l.c
++++ b/src/system_l.c
+@@ -29,6 +29,18 @@
+ #define SHELL &quot;/bin/sh&quot;
+ 
+ 
++inline void wait_proc (pid_t pid)
++{
++	i32 status;
++
++	waitpid(pid, &amp;status, 0);
++}
++
++inline void kill_proc (pid_t pid)
++{
++	kill(pid, SIGINT);
++}
++
+ /*
+  * Run a task in background, wait for a process to end and
+  * then kill the task in the background.
+diff --git a/src/system_w.c b/src/system_w.c
+index 886b3bf..71b5ed8 100644
+--- a/src/system_w.c
++++ b/src/system_w.c
+@@ -20,6 +20,14 @@
+ #include &quot;system.h&quot;
+ 
+ 
++inline void wait_proc (pid_t pid)
++{
++}
++
++inline void kill_proc (pid_t pid)
++{
++}
++
+ /*
+  * Run a task in background, wait for a process to end and
+  * then kill the task in the background.
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000043.html">[Ugtrain-devel] [PATCH 1/5] system: return the pid in run_cmd_bg()
+</A></li>
+	<LI>Next message: <A HREF="000045.html">[Ugtrain-devel] [PATCH 3/5] system: do major enhancements for	scanmem
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#44">[ date ]</a>
+              <a href="thread.html#44">[ thread ]</a>
+              <a href="subject.html#44">[ subject ]</a>
+              <a href="author.html#44">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

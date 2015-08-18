@@ -1,0 +1,165 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain: introduce 'dynmemign' config	command
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-September/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20introduce%20%27dynmemign%27%20config%0A%09command&In-Reply-To=%3C1378313583-2756-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000008.html">
+   <LINK REL="Next"  HREF="000011.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain: introduce 'dynmemign' config	command</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20introduce%20%27dynmemign%27%20config%0A%09command&In-Reply-To=%3C1378313583-2756-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain: introduce 'dynmemign' config	command">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Wed Sep  4 18:53:03 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000008.html">[Ugtrain-devel] [PATCH 4/4] examples/warzone2100 64-bit: add	Structure handling
+</A></li>
+        <LI>Next message: <A HREF="000011.html">[Ugtrain-devel] [PATCH] linuxhooking: unify use of 'common.h',	increase config space
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#10">[ date ]</a>
+              <a href="thread.html#10">[ thread ]</a>
+              <a href="subject.html#10">[ subject ]</a>
+              <a href="author.html#10">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>With that we get a method to configure a stack offset which is used
+for adaption but not for production. This helps the adaption to
+know that there might be unexpected stack offsets.
+
+The plan is to sort the stack offsets and to ignore e.g. always
+the highest stack offsets. If these stack offsets couldn't be
+discovered, it doesn't matter for us.
+---
+ src/cfgentry.h    |    1 +
+ src/cfgparser.cpp |    9 ++++++++-
+ src/discovery.cpp |    3 +++
+ src/ugtrain.cpp   |    5 ++++-
+ 4 files changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/src/cfgentry.h b/src/cfgentry.h
+index 1562130..49a6038 100644
+--- a/src/cfgentry.h
++++ b/src/cfgentry.h
+@@ -66,6 +66,7 @@ public:
+ 	/* adaption */
+ 	void *adp_addr;               /* adapted code address */
+ 	void *adp_soffs[MAX_STACK];   /* adapted stack offsets */
++	bool soffs_ign[MAX_STACK];    /* stack offset for adaption only? */
+ 	u32 cfg_lines[MAX_STACK];     /* to write back new cfg */
+ 	u8 adp_sidx;                  /* index in adapted stack offs */
+ 	bool adp_failed;
+diff --git a/src/cfgparser.cpp b/src/cfgparser.cpp
+index 570378d..2e586ec 100644
+--- a/src/cfgparser.cpp
++++ b/src/cfgparser.cpp
+@@ -35,6 +35,7 @@ enum {
+ 	NAME_DYNMEM_START,
+ 	NAME_DYNMEM_END,
+ 	NAME_DYNMEM_STACK,
++	NAME_DYNMEM_IGN,
+ 	NAME_ADAPT,
+ 	NAME_ADP_REQ
+ };
+@@ -103,6 +104,8 @@ static string parse_value_name (string *line, u32 lnr, u32 *start,
+ 			*name_type = NAME_DYNMEM_END;
+ 		else if (ret.substr(6, string::npos) == &quot;stack&quot;)
+ 			*name_type = NAME_DYNMEM_STACK;
++		else if (ret.substr(6, string::npos) == &quot;ign&quot;)
++			*name_type = NAME_DYNMEM_IGN;
+ 		else
+ 			*name_type = NAME_REGULAR;
+ 	} else if (ret.substr(0, 5) == &quot;check&quot;) {
+@@ -415,16 +418,20 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			break;
+ 
+ 		case NAME_DYNMEM_STACK:
++		case NAME_DYNMEM_IGN:
+ 			if (in_dynmem) {
+ 				if (dynmem_enp-&gt;num_stack &gt;= MAX_STACK)
+ 					cfg_parse_err(&amp;line, lnr, start);
+ 				dynmem_enp-&gt;stack_offs[dynmem_enp-&gt;num_stack] =
+ 					parse_address(&amp;line, lnr, &amp;start);
+ 				dynmem_enp-&gt;cfg_lines[dynmem_enp-&gt;num_stack] = lnr;
+-				dynmem_enp-&gt;num_stack++;
+ 			} else {
+ 				cfg_parse_err(&amp;line, lnr, start);
+ 			}
++			if (name_type == NAME_DYNMEM_IGN)
++				dynmem_enp-&gt;soffs_ign[dynmem_enp-&gt;num_stack] =
++					true;
++			dynmem_enp-&gt;num_stack++;
+ 			break;
+ 
+ 		case NAME_ADAPT:
+diff --git a/src/discovery.cpp b/src/discovery.cpp
+index 482bb8f..2cf1e37 100644
+--- a/src/discovery.cpp
++++ b/src/discovery.cpp
+@@ -101,6 +101,9 @@ static i32 postproc_stage5 (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 					+ to_string(tmp-&gt;mem_size) + &quot; &quot;
+ 					+ to_string(tmp-&gt;code_addr) + &quot; &quot;
+ 					+ to_string(tmp-&gt;stack_offs[i]);
++			else if (tmp-&gt;soffs_ign[i])
++				lines-&gt;at(lnr) = &quot;dynmemign &quot;
++					+ to_string(tmp-&gt;stack_offs[i]);
+ 			else
+ 				lines-&gt;at(lnr) = &quot;dynmemstack &quot;
+ 					+ to_string(tmp-&gt;stack_offs[i]);
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index d8e2e36..3d9a119 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -539,9 +539,12 @@ static i32 prepare_dynmem (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 			pos += snprintf(obuf + pos, sizeof(obuf) - pos,
+ 				&quot;;%lu;%p&quot;, (ulong) it-&gt;dynmem-&gt;mem_size,
+ 				it-&gt;dynmem-&gt;code_addr);
+-			for (i = 0; i &lt; MAX_STACK; i++)
++			for (i = 0; i &lt; MAX_STACK; i++) {
++				if (it-&gt;dynmem-&gt;soffs_ign[i])
++					it-&gt;dynmem-&gt;stack_offs[i] = NULL;
+ 				pos += snprintf(obuf + pos, sizeof(obuf) - pos,
+ 					&quot;;%p&quot;, it-&gt;dynmem-&gt;stack_offs[i]);
++			}
+ 			old_code_addr = it-&gt;dynmem-&gt;code_addr;
+ 		}
+ 	}
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000008.html">[Ugtrain-devel] [PATCH 4/4] examples/warzone2100 64-bit: add	Structure handling
+</A></li>
+	<LI>Next message: <A HREF="000011.html">[Ugtrain-devel] [PATCH] linuxhooking: unify use of 'common.h',	increase config space
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#10">[ date ]</a>
+              <a href="thread.html#10">[ thread ]</a>
+              <a href="subject.html#10">[ subject ]</a>
+              <a href="author.html#10">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

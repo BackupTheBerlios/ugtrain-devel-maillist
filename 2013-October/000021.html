@@ -1,0 +1,232 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 3/4] examples: do minor improvements
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-October/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%203/4%5D%20examples%3A%20do%20minor%20improvements&In-Reply-To=%3C1380885648-7237-3-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000020.html">
+   <LINK REL="Next"  HREF="000022.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 3/4] examples: do minor improvements</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%203/4%5D%20examples%3A%20do%20minor%20improvements&In-Reply-To=%3C1380885648-7237-3-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 3/4] examples: do minor improvements">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Fri Oct  4 13:20:47 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000020.html">[Ugtrain-devel] [PATCH 2/4] examples: introduce a single README for	the config syntax
+</A></li>
+        <LI>Next message: <A HREF="000022.html">[Ugtrain-devel] [PATCH 4/4] examples: warzone2100: do minor	improvements
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#21">[ date ]</a>
+              <a href="thread.html#21">[ thread ]</a>
+              <a href="subject.html#21">[ subject ]</a>
+              <a href="author.html#21">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>We improve the documentation a little bit, adaption also works for
+chromium-bsu 0.9.15.1 and with the dynamic value 'max' we've found
+out that the maximum ammo in chromium-bsu is not 148.5 but 150.0.
+---
+ examples/adapt/chromium-bsu_adapt32.sh | 12 ++++++------
+ examples/adapt/chromium-bsu_adapt64.sh | 12 ++++++------
+ examples/adapt/warzone2100_adapt32.sh  | 10 +++++-----
+ examples/adapt/warzone2100_adapt64.sh  | 12 ++++++------
+ examples/chromium-bsu32.conf           |  6 +++---
+ examples/chromium-bsu64.conf           |  6 +++---
+ 6 files changed, 29 insertions(+), 29 deletions(-)
+
+diff --git a/examples/adapt/chromium-bsu_adapt32.sh b/examples/adapt/chromium-bsu_adapt32.sh
+index c4e09cb..07e7904 100755
+--- a/examples/adapt/chromium-bsu_adapt32.sh
++++ b/examples/adapt/chromium-bsu_adapt32.sh
+@@ -1,13 +1,13 @@
+ #!/bin/bash
+ 
+-# The issue is that code address and stack offset for mallocs can differ
+-# from distribution to distribution. But the thing which remains constant
+-# is often the way how the code internally works.
++# The issue is that code address and stack offsets for mallocs can differ
++# between distributions, compilers and game versions. But the thing which
++# remains constant is often the way how the code internally works.
+ 
+-# chromium-bsu 0.9.14.1 or 0.9.15
++# Tested with: chromium-bsu 0.9.14.1, 0.9.15, 0.9.15.1
+ 
+ # We already know that chromium-bsu is a 32-bit C++ application. Therefore,
+-# objects are initialized most likely by the &quot;_Znwj&quot; function. This function
++# objects are allocated most likely by the &quot;_Znwj&quot; function. This function
+ # calls malloc internally.
+ # And from previous discovery runs we already know the malloc size (272 or
+ # 0x110) for the object in which the NUMBER OF LIVES is stored.
+@@ -43,5 +43,5 @@ echo &quot;$RESULT&quot;
+ # This shows us that 0x8057219 is the relevant code address.
+ 
+ # We can jump directly to stage 4 of the discovery with that and leave the
+-# heap start and end addresses at 0x0 (NULL) as we already know the unique
++# heap start and end offsets at 0x0 (NULL) as we already know the unique
+ # code address and malloc size.
+diff --git a/examples/adapt/chromium-bsu_adapt64.sh b/examples/adapt/chromium-bsu_adapt64.sh
+index f8e34cd..c0580ff 100755
+--- a/examples/adapt/chromium-bsu_adapt64.sh
++++ b/examples/adapt/chromium-bsu_adapt64.sh
+@@ -1,13 +1,13 @@
+ #!/bin/bash
+ 
+-# The issue is that code address and stack offset for mallocs can differ
+-# from distribution to distribution. But the thing which remains constant
+-# is often the way how the code internally works.
++# The issue is that code address and stack offsets for mallocs can differ
++# between distributions, compilers and game versions. But the thing which
++# remains constant is often the way how the code internally works.
+ 
+-# chromium-bsu 0.9.14.1 or 0.9.15
++# Tested with: chromium-bsu 0.9.14.1, 0.9.15, 0.9.15.1
+ 
+ # We already know that chromium-bsu is a 64-bit C++ application. Therefore,
+-# objects are initialized most likely by the &quot;_Znwm&quot; function. This function
++# objects are allocated most likely by the &quot;_Znwm&quot; function. This function
+ # calls malloc internally.
+ # And from previous discovery runs we already know the malloc size (288 or
+ # 0x120) for the object in which the NUMBER OF LIVES is stored.
+@@ -44,5 +44,5 @@ echo &quot;$RESULT&quot;
+ # This shows us that 0x411097 is the relevant code address.
+ 
+ # We can jump directly to stage 4 of the discovery with that and leave the
+-# heap start and end addresses at 0x0 (NULL) as we already know the unique
++# heap start and end offsets at 0x0 (NULL) as we already know the unique
+ # code address and malloc size.
+diff --git a/examples/adapt/warzone2100_adapt32.sh b/examples/adapt/warzone2100_adapt32.sh
+index bd37a58..0deab5f 100755
+--- a/examples/adapt/warzone2100_adapt32.sh
++++ b/examples/adapt/warzone2100_adapt32.sh
+@@ -1,10 +1,10 @@
+ #!/bin/bash
+ 
+-# The issue is that code address and stack offset for mallocs can differ
+-# from distribution to distribution. But the thing which remains constant
+-# is often the way how the code internally works.
++# The issue is that code address and stack offsets for mallocs can differ
++# between distributions, compilers and game versions. But the thing which
++# remains constant is often the way how the code internally works.
+ 
+-# Warzone 2100 2.3.8
++# Tested with: Warzone 2100 2.3.8
+ 
+ # We already know that warzone2100 is a 32-bit C++ application and that
+ # the DROID structure is allocated with malloc().
+@@ -14,7 +14,7 @@
+ CWD=`dirname $0`
+ cd &quot;$CWD&quot;
+ APP_PATH=`which warzone2100`
+-APP_VERS=`warzone2100 --version | grep -o &quot;Version.*&quot; | cut -d ' ' -f 2`
++APP_VERS=`${APP_PATH} --version | grep -o &quot;Version.*&quot; | cut -d ' ' -f 2`
+ 
+ IFS=`printf '\n+'`
+ CODE_PART=`objdump -D &quot;$APP_PATH&quot; | grep &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; -B 1 -A 1 | grep -A 2 0x36c`
+diff --git a/examples/adapt/warzone2100_adapt64.sh b/examples/adapt/warzone2100_adapt64.sh
+index 0a52116..d887851 100755
+--- a/examples/adapt/warzone2100_adapt64.sh
++++ b/examples/adapt/warzone2100_adapt64.sh
+@@ -1,10 +1,10 @@
+ #!/bin/bash
+ 
+-# The issue is that code address and stack offset for mallocs can differ
+-# from distribution to distribution. But the thing which remains constant
+-# is often the way how the code internally works.
++# The issue is that code address and stack offsets for mallocs can differ
++# between distributions, compilers and game versions. But the thing which
++# remains constant is often the way how the code internally works.
+ 
+-# Warzone 2100 3.1.0
++# Tested with: Warzone 2100 3.1.0
+ 
+ # We already know that warzone2100 is a 64-bit C++ application and that
+ # the DROID and Structure classes are allocated with _Znwm().
+@@ -15,7 +15,7 @@
+ CWD=`dirname $0`
+ cd &quot;$CWD&quot;
+ APP_PATH=`which warzone2100`
+-APP_VERS=`warzone2100 --version | grep -o &quot;Version.*&quot; | cut -d ' ' -f 2`
++APP_VERS=`${APP_PATH} --version | grep -o &quot;Version.*&quot; | cut -d ' ' -f 2`
+ 
+ IFS=`printf '\n+'`
+ CODE_PART=`objdump -D &quot;$APP_PATH&quot; | grep &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; -B 2 -A 1 | grep -A 3 0x360`
+@@ -62,4 +62,4 @@ echo &quot;$RESULT&quot;
+ 
+ # We can jump directly to stage 4 of the discovery with that and leave the
+ # heap start and end offsets at 0x0 (NULL) as we already know the unique
+-# code address and malloc size.
++# code address and malloc size per memory class.
+diff --git a/examples/chromium-bsu32.conf b/examples/chromium-bsu32.conf
+index 13faaf7..1057c1f 100644
+--- a/examples/chromium-bsu32.conf
++++ b/examples/chromium-bsu32.conf
+@@ -28,9 +28,9 @@ check 0xb0 i32 g 0
+ Shield 0xe4 f32 l 1000.0 3,9 a
+ check 0xb0 i32 g 0
+ 
+-Ammo_1 0xc4 f32 l 148.5 4,9 a
+-Ammo_2 0xc8 f32 l 148.5 5,9 a
+-Ammo_3 0xcc f32 l 148.5 6,9 a
++Ammo_1 0xc4 f32 l 150.0 4,9 a
++Ammo_2 0xc8 f32 l 150.0 5,9 a
++Ammo_3 0xcc f32 l 150.0 6,9 a
+ Ammo_1_en 0x4c u8 l 1 4,9 a
+ Ammo_2_en 0x4d u8 l 1 5,9 a
+ Ammo_3_en 0x4e u8 l 1 6,9 a
+diff --git a/examples/chromium-bsu64.conf b/examples/chromium-bsu64.conf
+index da1e213..e5ccdd8 100644
+--- a/examples/chromium-bsu64.conf
++++ b/examples/chromium-bsu64.conf
+@@ -28,9 +28,9 @@ check 0xbc i32 g 0
+ Shield 0xf0 f32 l 1000.0 3,9 a
+ check 0xbc i32 g 0
+ 
+-Ammo_1 0xd0 f32 l 148.5 4,9 a
+-Ammo_2 0xd4 f32 l 148.5 5,9 a
+-Ammo_3 0xd8 f32 l 148.5 6,9 a
++Ammo_1 0xd0 f32 l 150.0 4,9 a
++Ammo_2 0xd4 f32 l 150.0 5,9 a
++Ammo_3 0xd8 f32 l 150.0 6,9 a
+ Ammo_1_en 0x58 u8 l 1 4,9 a
+ Ammo_2_en 0x59 u8 l 1 5,9 a
+ Ammo_3_en 0x5a u8 l 1 6,9 a
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000020.html">[Ugtrain-devel] [PATCH 2/4] examples: introduce a single README for	the config syntax
+</A></li>
+	<LI>Next message: <A HREF="000022.html">[Ugtrain-devel] [PATCH 4/4] examples: warzone2100: do minor	improvements
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#21">[ date ]</a>
+              <a href="thread.html#21">[ thread ]</a>
+              <a href="subject.html#21">[ subject ]</a>
+              <a href="author.html#21">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

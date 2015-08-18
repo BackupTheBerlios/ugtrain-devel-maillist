@@ -1,0 +1,172 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 7/7] examples: warzone2100: add real	variable names
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2014-January/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%207/7%5D%20examples%3A%20warzone2100%3A%20add%20real%0A%09variable%20names&In-Reply-To=%3C1389816360-3466-8-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000088.html">
+   <LINK REL="Next"  HREF="000089.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 7/7] examples: warzone2100: add real	variable names</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%207/7%5D%20examples%3A%20warzone2100%3A%20add%20real%0A%09variable%20names&In-Reply-To=%3C1389816360-3466-8-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 7/7] examples: warzone2100: add real	variable names">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Wed Jan 15 21:06:00 CET 2014</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000088.html">[Ugtrain-devel] [PATCH 6/7] examples: warzone2100: add version	3.1.1 support
+</A></li>
+        <LI>Next message: <A HREF="000089.html">[Ugtrain-devel] [PATCH] examples: update the README for new config	options
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#87">[ date ]</a>
+              <a href="thread.html#87">[ thread ]</a>
+              <a href="subject.html#87">[ subject ]</a>
+              <a href="author.html#87">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>---
+ examples/warzone2100-32.conf     |   15 +++++++++++++++
+ examples/warzone2100-64.conf     |   15 +++++++++++++++
+ examples/warzone2100_238-32.conf |   17 +++++++++++++++++
+ examples/warzone2100_238-64.conf |   17 +++++++++++++++++
+ 4 files changed, 64 insertions(+)
+
+diff --git a/examples/warzone2100-32.conf b/examples/warzone2100-32.conf
+index 6507fa3..339dfef 100644
+--- a/examples/warzone2100-32.conf
++++ b/examples/warzone2100-32.conf
+@@ -164,4 +164,19 @@ DebugEn 0x8b25320 u8 l 1 C,X d
+ # point and 32 bit after it. We were lucky to find it as i32 this way.
+ # For ugtrain only these 32 bit count.
+ 
++# DMaxBody: DROID::originalBody, src/droiddef.h
++# DBody, SBody: BASE_OBJECT::body, src/basedef.h
++# DKills: DROID::experience, src/droiddef.h
++# DWeight: DROID::weight, src/droiddef.h
++# DSpeed: DROID::baseSpeed, src/droiddef.h
++
++# SType: STRUCTURE_STATS::type, src/structuredef.h
++# SMaxBuild: STRUCTURE_STATS::buildPoints, src/structuredef.h
++# FPts2Build: FACTORY::buildPointsRemaining, src/structuredef.h
++# FBuildPts: FACTORY::productionOutput, src/structuredef.h
++# RResPts: RESEARCH_FACILITY::researchPoints, src/structuredef.h
++# SStatPtr: STRUCTURE::pStructureType, src/structuredef.h
++# SBuild: STRUCTURE::currentBuildPts, src/structuredef.h
++# SFuncPtr: STRUCTURE::pFunctionality, src/structuredef.h
++
+ # Please read examples/README for the syntax description
+diff --git a/examples/warzone2100-64.conf b/examples/warzone2100-64.conf
+index a45db33..aec2593 100644
+--- a/examples/warzone2100-64.conf
++++ b/examples/warzone2100-64.conf
+@@ -164,4 +164,19 @@ DebugEn 0x1002a30 u8 l 1 C,X d
+ # point and 32 bit after it. We were lucky to find it as i32 this way.
+ # For ugtrain only these 32 bit count.
+ 
++# DMaxBody: DROID::originalBody, src/droiddef.h
++# DBody, SBody: BASE_OBJECT::body, src/basedef.h
++# DKills: DROID::experience, src/droiddef.h
++# DWeight: DROID::weight, src/droiddef.h
++# DSpeed: DROID::baseSpeed, src/droiddef.h
++
++# SType: STRUCTURE_STATS::type, src/structuredef.h
++# SMaxBuild: STRUCTURE_STATS::buildPoints, src/structuredef.h
++# FPts2Build: FACTORY::buildPointsRemaining, src/structuredef.h
++# FBuildPts: FACTORY::productionOutput, src/structuredef.h
++# RResPts: RESEARCH_FACILITY::researchPoints, src/structuredef.h
++# SStatPtr: STRUCTURE::pStructureType, src/structuredef.h
++# SBuild: STRUCTURE::currentBuildPts, src/structuredef.h
++# SFuncPtr: STRUCTURE::pFunctionality, src/structuredef.h
++
+ # Please read examples/README for the syntax description
+diff --git a/examples/warzone2100_238-32.conf b/examples/warzone2100_238-32.conf
+index a6a3396..d3260ea 100644
+--- a/examples/warzone2100_238-32.conf
++++ b/examples/warzone2100_238-32.conf
+@@ -172,4 +172,21 @@ DebugEn 0x8598d80 u8 l 1 C,X d
+ # point and 32 bit after it. We were lucky to find it as i32 this way.
+ # For ugtrain only these 32 bit count.
+ 
++# DMaxBody: DROID::originalBody, src/droiddef.h
++# DBody, SBody: BASE_OBJECT::body, src/basedef.h
++# DKills: DROID::experience, src/droiddef.h
++# DWeight: DROID::weight, src/droiddef.h
++# DSpeed: DROID::baseSpeed, src/droiddef.h
++
++# SType: STRUCTURE_STATS::type, src/structuredef.h
++# SMaxBuild: STRUCTURE_STATS::buildPoints, src/structuredef.h
++# FBuildTime: FACTORY::timeToBuild, src/structuredef.h
++# FBuildPts: FACTORY::productionOutput, src/structuredef.h
++# FPowerPts: FACTORY::powerAccrued, src/structuredef.h
++# RResPts: RESEARCH_FACILITY::researchPoints, src/structuredef.h
++# RPowerPts: RESEARCH_FACILITY::powerAccrued, src/structuredef.h
++# SStatPtr: STRUCTURE::pStructureType, src/structuredef.h
++# SBuild: STRUCTURE::currentBuildPts, src/structuredef.h
++# SFuncPtr: STRUCTURE::pFunctionality, src/structuredef.h
++
+ # Please read examples/README for the syntax description
+diff --git a/examples/warzone2100_238-64.conf b/examples/warzone2100_238-64.conf
+index 261d7d9..4d1f5b1 100644
+--- a/examples/warzone2100_238-64.conf
++++ b/examples/warzone2100_238-64.conf
+@@ -172,4 +172,21 @@ DebugEn 0xcfae50 u8 l 1 C,X d
+ # point and 32 bit after it. We were lucky to find it as i32 this way.
+ # For ugtrain only these 32 bit count.
+ 
++# DMaxBody: DROID::originalBody, src/droiddef.h
++# DBody, SBody: BASE_OBJECT::body, src/basedef.h
++# DKills: DROID::experience, src/droiddef.h
++# DWeight: DROID::weight, src/droiddef.h
++# DSpeed: DROID::baseSpeed, src/droiddef.h
++
++# SType: STRUCTURE_STATS::type, src/structuredef.h
++# SMaxBuild: STRUCTURE_STATS::buildPoints, src/structuredef.h
++# FBuildTime: FACTORY::timeToBuild, src/structuredef.h
++# FBuildPts: FACTORY::productionOutput, src/structuredef.h
++# FPowerPts: FACTORY::powerAccrued, src/structuredef.h
++# RResPts: RESEARCH_FACILITY::researchPoints, src/structuredef.h
++# RPowerPts: RESEARCH_FACILITY::powerAccrued, src/structuredef.h
++# SStatPtr: STRUCTURE::pStructureType, src/structuredef.h
++# SBuild: STRUCTURE::currentBuildPts, src/structuredef.h
++# SFuncPtr: STRUCTURE::pFunctionality, src/structuredef.h
++
+ # Please read examples/README for the syntax description
+-- 
+1.7.9.5
+
+</PRE>
+
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000088.html">[Ugtrain-devel] [PATCH 6/7] examples: warzone2100: add version	3.1.1 support
+</A></li>
+	<LI>Next message: <A HREF="000089.html">[Ugtrain-devel] [PATCH] examples: update the README for new config	options
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#87">[ date ]</a>
+              <a href="thread.html#87">[ thread ]</a>
+              <a href="subject.html#87">[ subject ]</a>
+              <a href="author.html#87">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,370 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] examples/adapt: unify adaption code
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-October/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20examples/adapt%3A%20unify%20adaption%20code&In-Reply-To=%3C1381218797-4645-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000025.html">
+   <LINK REL="Next"  HREF="000028.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] examples/adapt: unify adaption code</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20examples/adapt%3A%20unify%20adaption%20code&In-Reply-To=%3C1381218797-4645-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] examples/adapt: unify adaption code">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Tue Oct  8 09:53:17 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000025.html">[Ugtrain-devel] [PATCH] ugtrain: fix headline per dynmem class
+</A></li>
+        <LI>Next message: <A HREF="000028.html">[Ugtrain-devel] [PATCH] discovery: discover dynmemign optionally in	stage 5
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#27">[ date ]</a>
+              <a href="thread.html#27">[ thread ]</a>
+              <a href="subject.html#27">[ subject ]</a>
+              <a href="author.html#27">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>---
+ examples/adapt/_common_adapt.sh        | 74 ++++++++++++++++++++++++++++++++++
+ examples/adapt/chromium-bsu_adapt32.sh | 22 ++--------
+ examples/adapt/chromium-bsu_adapt64.sh | 22 ++--------
+ examples/adapt/warzone2100_adapt32.sh  | 33 ++++++---------
+ examples/adapt/warzone2100_adapt64.sh  | 40 ++++--------------
+ 5 files changed, 101 insertions(+), 90 deletions(-)
+ create mode 100644 examples/adapt/_common_adapt.sh
+
+diff --git a/examples/adapt/_common_adapt.sh b/examples/adapt/_common_adapt.sh
+new file mode 100644
+index 0000000..dc45921
+--- /dev/null
++++ b/examples/adapt/_common_adapt.sh
+@@ -0,0 +1,74 @@
++#!/bin/bash
++
++# The issue is that code address and stack offsets for mallocs can differ
++# between distributions, compilers and game versions. But the thing which
++# remains constant is often the way how the code internally works.
++
++DEBUG=0
++
++function get_malloc_code_3()
++{
++    app_path=&quot;$1&quot;
++    fname=&quot;$2&quot;
++    msize=&quot;$3&quot;
++    explines=$4
++    taillines=$5
++
++    IFS=`printf '\n+'`
++    if [ $DEBUG -eq 1 ]; then echo &quot;objdump -D $app_path | grep $fname -B 2 -A 1 | grep -A 2 $msize&quot;; fi
++    CODE_PART=`objdump -D &quot;$app_path&quot; | grep &quot;$fname&quot; -B 2 -A 1 \
++              | grep -A 2 &quot;$msize&quot;`
++    if [ &quot;$CODE_PART&quot; == &quot;&quot; ]; then exit 1; fi
++    if [ $DEBUG -eq 1 ]; then echo -e &quot;$CODE_PART&quot;; fi
++
++    CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
++    if [ $CODE_LINES -ne $explines ]; then exit 1; fi
++
++    CODE_PART=`echo -e &quot;$CODE_PART&quot; | tail -n $taillines`
++    CODE_PART=`echo -e &quot;$CODE_PART&quot; | head -n 3`
++
++    CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
++    if [ $CODE_LINES -ne 3 ]; then exit 1; fi
++
++    CODE_CALL=`echo -e &quot;$CODE_PART&quot; | cut -d '
++' -f 2 | grep call`
++    if [ &quot;$CODE_CALL&quot; == &quot;&quot; ]; then exit 1; fi
++
++    CODE_ADDR=`echo -e &quot;$CODE_PART&quot; | cut -d '
++' -f 3 | cut -d ':' -f 1 | tr -d [:blank:]`
++    if [ &quot;$CODE_ADDR&quot; == &quot;&quot; ]; then exit 1; fi
++    IFS=''
++}
++
++function get_malloc_code_4()
++{
++    app_path=&quot;$1&quot;
++    fname=&quot;$2&quot;
++    msize=&quot;$3&quot;
++    explines=$4
++    taillines=$5
++
++    IFS=`printf '\n+'`
++    if [ $DEBUG -eq 1 ]; then echo &quot;objdump -D $app_path | grep $fname -B 2 -A 1 | grep -A 3 $msize&quot;; fi
++    CODE_PART=`objdump -D &quot;$app_path&quot; | grep &quot;$fname&quot; -B 2 -A 1 \
++              | grep -A 3 &quot;$msize&quot;`
++    if [ &quot;$CODE_PART&quot; == &quot;&quot; ]; then exit 1; fi
++    if [ $DEBUG -eq 1 ]; then echo -e &quot;$CODE_PART&quot;; fi
++
++    CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
++    if [ $CODE_LINES -ne $explines ]; then exit 1; fi
++
++    CODE_PART=`echo -e &quot;$CODE_PART&quot; | tail -n $taillines`
++    CODE_PART=`echo -e &quot;$CODE_PART&quot; | head -n 4`
++
++    CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
++    if [ $CODE_LINES -ne 4 ]; then exit 1; fi
++
++    CODE_CALL=`echo -e &quot;$CODE_PART&quot; | cut -d '
++' -f 3 | grep call`
++    if [ &quot;$CODE_CALL&quot; == &quot;&quot; ]; then exit 1; fi
++
++    CODE_ADDR=`echo -e &quot;$CODE_PART&quot; | cut -d '
++' -f 4 | cut -d ':' -f 1 | tr -d [:blank:]`
++    if [ &quot;$CODE_ADDR&quot; == &quot;&quot; ]; then exit 1; fi
++}
+diff --git a/examples/adapt/chromium-bsu_adapt32.sh b/examples/adapt/chromium-bsu_adapt32.sh
+index 8df34e9..448c701 100755
+--- a/examples/adapt/chromium-bsu_adapt32.sh
++++ b/examples/adapt/chromium-bsu_adapt32.sh
+@@ -1,36 +1,20 @@
+ #!/bin/bash
+ 
+-# The issue is that code address and stack offsets for mallocs can differ
+-# between distributions, compilers and game versions. But the thing which
+-# remains constant is often the way how the code internally works.
+-
+ # Tested with: chromium-bsu 0.9.14.1, 0.9.15, 0.9.15.1
+ 
+ # We already know that chromium-bsu is a 32-bit C++ application. Therefore,
+ # objects are allocated most likely by the &quot;_Znwj&quot; function. This function
+ # calls malloc internally.
+ # And from previous discovery runs we already know the malloc size (272 or
+-# 0x110) for the object in which the NUMBER OF LIVES is stored.
++# 0x110) for the HeroAircraft object.
+ 
+ CWD=`dirname $0`
+ cd &quot;$CWD&quot;
+ APP_PATH=&quot;$1&quot;
+ 
+-IFS=`printf '\n+'`
+-CODE_PART=`objdump -D &quot;$APP_PATH&quot; | grep &quot;_Znwj&quot; -B 2 -A 1 | grep -A 2 0x110`
+-if [ &quot;$CODE_PART&quot; == &quot;&quot; ]; then exit 1; fi
+-
+-CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
+-if [ $CODE_LINES -ne 3 ]; then exit 1; fi
+-
+-CODE_CALL=`echo -e &quot;$CODE_PART&quot; | cut -d '
+-' -f 2 | grep call`
+-if [ &quot;$CODE_CALL&quot; == &quot;&quot; ]; then exit 1; fi
++. _common_adapt.sh
+ 
+-CODE_ADDR=`echo -e &quot;$CODE_PART&quot; | cut -d '
+-' -f 3 | cut -d ':' -f 1 | tr -d [:blank:]`
+-if [ &quot;$CODE_ADDR&quot; == &quot;&quot; ]; then exit 1; fi
+-IFS=''
++get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwj at plt</A>\&gt;&quot; &quot;0x110&quot; 3 3
+ 
+ RESULT=`echo &quot;1;HeroAircraft;0x$CODE_ADDR&quot;`
+ echo &quot;$RESULT&quot;
+diff --git a/examples/adapt/chromium-bsu_adapt64.sh b/examples/adapt/chromium-bsu_adapt64.sh
+index 5bb75fd..e50d677 100755
+--- a/examples/adapt/chromium-bsu_adapt64.sh
++++ b/examples/adapt/chromium-bsu_adapt64.sh
+@@ -1,36 +1,20 @@
+ #!/bin/bash
+ 
+-# The issue is that code address and stack offsets for mallocs can differ
+-# between distributions, compilers and game versions. But the thing which
+-# remains constant is often the way how the code internally works.
+-
+ # Tested with: chromium-bsu 0.9.14.1, 0.9.15, 0.9.15.1
+ 
+ # We already know that chromium-bsu is a 64-bit C++ application. Therefore,
+ # objects are allocated most likely by the &quot;_Znwm&quot; function. This function
+ # calls malloc internally.
+ # And from previous discovery runs we already know the malloc size (288 or
+-# 0x120) for the object in which the NUMBER OF LIVES is stored.
++# 0x120) for the HeroAircraft object.
+ 
+ CWD=`dirname $0`
+ cd &quot;$CWD&quot;
+ APP_PATH=&quot;$1&quot;
+ 
+-IFS=`printf '\n+'`
+-CODE_PART=`objdump -D &quot;$APP_PATH&quot; | grep &quot;_Znwm&quot; -B 2 -A 1 | grep -A 3 0x120`
+-if [ &quot;$CODE_PART&quot; == &quot;&quot; ]; then exit 1; fi
+-
+-CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
+-if [ $CODE_LINES -ne 4 ]; then exit 1; fi
+-
+-CODE_CALL=`echo -e &quot;$CODE_PART&quot; | cut -d '
+-' -f 3 | grep call`
+-if [ &quot;$CODE_CALL&quot; == &quot;&quot; ]; then exit 1; fi
++. _common_adapt.sh
+ 
+-CODE_ADDR=`echo -e &quot;$CODE_PART&quot; | cut -d '
+-' -f 4 | cut -d ':' -f 1 | tr -d [:blank:]`
+-if [ &quot;$CODE_ADDR&quot; == &quot;&quot; ]; then exit 1; fi
+-IFS=''
++get_malloc_code_4 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x120&quot; 4 4
+ 
+ RESULT=`echo &quot;1;HeroAircraft;0x$CODE_ADDR&quot;`
+ echo &quot;$RESULT&quot;
+diff --git a/examples/adapt/warzone2100_adapt32.sh b/examples/adapt/warzone2100_adapt32.sh
+index 38cdb97..18726e7 100755
+--- a/examples/adapt/warzone2100_adapt32.sh
++++ b/examples/adapt/warzone2100_adapt32.sh
+@@ -1,38 +1,31 @@
+ #!/bin/bash
+ 
+-# The issue is that code address and stack offsets for mallocs can differ
+-# between distributions, compilers and game versions. But the thing which
+-# remains constant is often the way how the code internally works.
+-
+ # Tested with: Warzone 2100 2.3.8
+ 
+ # We already know that warzone2100 is a 32-bit C++ application and that
+-# the DROID structure is allocated with malloc().
++# the DROID and Structure structs are allocated with malloc().
+ # From previous discovery runs we already know the malloc size (876 or
+-# 0x36c) for the object (DROID) in which the BODY POINTS are stored.
++# 0x36c) for the Droid object. The Structure object has
++# 296 or 0x128.
+ 
+ CWD=`dirname $0`
+ cd &quot;$CWD&quot;
+ APP_PATH=&quot;$1&quot;
+ APP_VERS=`${APP_PATH} --version | grep -o &quot;Version.*&quot; | cut -d ' ' -f 2`
+ 
+-IFS=`printf '\n+'`
+-CODE_PART=`objdump -D &quot;$APP_PATH&quot; | grep &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; -B 1 -A 1 | grep -A 2 0x36c`
+-if [ &quot;$CODE_PART&quot; == &quot;&quot; ]; then exit 1; fi
++. _common_adapt.sh
++
++get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; &quot;0x36c&quot; 3 3
++
++CODE_ADDR1=&quot;$CODE_ADDR&quot;
+ 
+-CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
+-if [ $CODE_LINES -ne 3 ]; then exit 1; fi
++############################################
+ 
+-CODE_CALL=`echo -e &quot;$CODE_PART&quot; | cut -d '
+-' -f 2 | grep call`
+-if [ &quot;$CODE_CALL&quot; == &quot;&quot; ]; then exit 1; fi
++get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; &quot;0x128&quot; 7 7
+ 
+-CODE_ADDR=`echo -e &quot;$CODE_PART&quot; | cut -d '
+-' -f 3 | cut -d ':' -f 1 | tr -d [:blank:]`
+-if [ &quot;$CODE_ADDR&quot; == &quot;&quot; ]; then exit 1; fi
+-IFS=''
++CODE_ADDR2=&quot;$CODE_ADDR&quot;
+ 
+-RESULT=`echo &quot;1;Droid;0x$CODE_ADDR&quot;`
++RESULT=`echo &quot;2;Droid;0x$CODE_ADDR1;Structure;0x$CODE_ADDR2&quot;`
+ echo &quot;$RESULT&quot;
+ 
+ # Should return something like this:
+@@ -44,4 +37,4 @@ echo &quot;$RESULT&quot;
+ 
+ # We can jump directly to stage 4 of the discovery with that and leave the
+ # heap start and end offsets at 0x0 (NULL) as we already know the unique
+-# code address and malloc size.
++# code address and malloc size per memory class.
+diff --git a/examples/adapt/warzone2100_adapt64.sh b/examples/adapt/warzone2100_adapt64.sh
+index d52927e..133ea10 100755
+--- a/examples/adapt/warzone2100_adapt64.sh
++++ b/examples/adapt/warzone2100_adapt64.sh
+@@ -1,55 +1,31 @@
+ #!/bin/bash
+ 
+-# The issue is that code address and stack offsets for mallocs can differ
+-# between distributions, compilers and game versions. But the thing which
+-# remains constant is often the way how the code internally works.
+-
+ # Tested with: Warzone 2100 3.1.0
+ 
+ # We already know that warzone2100 is a 64-bit C++ application and that
+ # the DROID and Structure classes are allocated with _Znwm().
+ # From previous discovery runs we already know the malloc size (864 or
+-# 0x360) for the object (DROID) in which the BODY POINTS are stored. The
+-# Structure object has the malloc size 424 or 0x1a8.
++# 0x360) for the Droid object. The Structure object has the malloc size
++# 424 or 0x1a8.
+ 
+ CWD=`dirname $0`
+ cd &quot;$CWD&quot;
+ APP_PATH=&quot;$1&quot;
+ APP_VERS=`${APP_PATH} --version | grep -o &quot;Version.*&quot; | cut -d ' ' -f 2`
+ 
+-IFS=`printf '\n+'`
+-CODE_PART=`objdump -D &quot;$APP_PATH&quot; | grep &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; -B 2 -A 1 | grep -A 3 0x360`
+-if [ &quot;$CODE_PART&quot; == &quot;&quot; ]; then exit 1; fi
+-
+-CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
+-if [ $CODE_LINES -ne 4 ]; then exit 1; fi
++. _common_adapt.sh
+ 
+-CODE_CALL=`echo -e &quot;$CODE_PART&quot; | cut -d '
+-' -f 3 | grep call`
+-if [ &quot;$CODE_CALL&quot; == &quot;&quot; ]; then exit 1; fi
++get_malloc_code_4 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x360&quot; 4 4
+ 
+-CODE_ADDR=`echo -e &quot;$CODE_PART&quot; | cut -d '
+-' -f 4 | cut -d ':' -f 1 | tr -d [:blank:]`
+-if [ &quot;$CODE_ADDR&quot; == &quot;&quot; ]; then exit 1; fi
++CODE_ADDR1=&quot;$CODE_ADDR&quot;
+ 
+ ############################################
+ 
+-CODE_PART2=`objdump -D &quot;$APP_PATH&quot; | grep &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; -B 2 -A 1 | grep -A 3 0x1a8 | tail -n 4`
+-if [ &quot;$CODE_PART2&quot; == &quot;&quot; ]; then exit 1; fi
+-
+-CODE_LINES2=`echo -e &quot;$CODE_PART2&quot; | wc -l`
+-if [ $CODE_LINES2 -ne 4 ]; then exit 1; fi
+-
+-CODE_CALL2=`echo -e &quot;$CODE_PART2&quot; | cut -d '
+-' -f 3 | grep call`
+-if [ &quot;$CODE_CALL2&quot; == &quot;&quot; ]; then exit 1; fi
++get_malloc_code_4 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x1a8&quot; 8 4
+ 
+-CODE_ADDR2=`echo -e &quot;$CODE_PART2&quot; | cut -d '
+-' -f 4 | cut -d ':' -f 1 | tr -d [:blank:]`
+-if [ &quot;$CODE_ADDR2&quot; == &quot;&quot; ]; then exit 1; fi
+-IFS=''
++CODE_ADDR2=&quot;$CODE_ADDR&quot;
+ 
+-RESULT=`echo &quot;2;Droid;0x$CODE_ADDR;Structure;0x$CODE_ADDR2&quot;`
++RESULT=`echo &quot;2;Droid;0x$CODE_ADDR1;Structure;0x$CODE_ADDR2&quot;`
+ echo &quot;$RESULT&quot;
+ 
+ # Should return something like this:
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000025.html">[Ugtrain-devel] [PATCH] ugtrain: fix headline per dynmem class
+</A></li>
+	<LI>Next message: <A HREF="000028.html">[Ugtrain-devel] [PATCH] discovery: discover dynmemign optionally in	stage 5
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#27">[ date ]</a>
+              <a href="thread.html#27">[ thread ]</a>
+              <a href="subject.html#27">[ subject ]</a>
+              <a href="author.html#27">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

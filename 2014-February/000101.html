@@ -1,0 +1,182 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] linuxhooking: only care for the game	process only once
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2014-February/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20linuxhooking%3A%20only%20care%20for%20the%20game%0A%09process%20only%20once&In-Reply-To=%3C1391809435-32596-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000100.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] linuxhooking: only care for the game	process only once</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20linuxhooking%3A%20only%20care%20for%20the%20game%0A%09process%20only%20once&In-Reply-To=%3C1391809435-32596-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] linuxhooking: only care for the game	process only once">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Fri Feb  7 22:43:54 CET 2014</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000100.html">[Ugtrain-devel] [PATCH] ugtrain: introduce 'game_params' support
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#101">[ date ]</a>
+              <a href="thread.html#101">[ thread ]</a>
+              <a href="subject.html#101">[ subject ]</a>
+              <a href="author.html#101">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>There are games which are called from a shell script or we use
+a tool like glc-capture. But we don't want these to activate the
+hooking. If everything is active already, there is no need to read
+from the already empty input FIFO. The expected game process name
+is transfered via an environment variable.
+---
+ linuxhooking/libmemdisc.c |   17 +++++++++++++++++
+ linuxhooking/libmemhack.c |   17 +++++++++++++++++
+ src/ugtrain.cpp           |    2 ++
+ 3 files changed, 36 insertions(+)
+
+diff --git a/linuxhooking/libmemdisc.c b/linuxhooking/libmemdisc.c
+index 9d7fc46..37accd7 100644
+--- a/linuxhooking/libmemdisc.c
++++ b/linuxhooking/libmemdisc.c
+@@ -88,6 +88,10 @@ static size_t malloc_size = 0;
+    greatest used stack address. */
+ extern void *__libc_stack_end;
+ 
++/* ask libc for our process name as 'argv[0]' and 'getenv(&quot;_&quot;)'
++   don't work here */
++extern char *__progname;
++
+ /* relevant start and end code addresses of .text segment */
+ static void *bt_saddr = NULL, *bt_eaddr = NULL;
+ 
+@@ -127,6 +131,7 @@ cfg_s ptr_cfg;
+ /* prepare memory hacking on library load */
+ void __attribute ((constructor)) memdisc_init (void)
+ {
++	char *proc_name, *expected;
+ 	ssize_t rbytes;
+ 	i32 read_tries, ioffs = 0;
+ 	char *iptr;
+@@ -134,9 +139,21 @@ void __attribute ((constructor)) memdisc_init (void)
+ 	char gbt_buf[sizeof(GBT_CMD)] = { 0 };
+ 	void *heap_start = NULL, *heap_soffs = NULL, *heap_eoffs = NULL;
+ 
++	/* only care for the game process (ignore shell and others) */
++	expected = getenv(&quot;UGT_GAME_PROC_NAME&quot;);
++	if (expected) {
++		proc_name = __progname;
++		printf(&quot;proc_name: %s, exp: %s\n&quot;, proc_name, expected);
++		if (strcmp(expected, proc_name) != 0)
++			return;
++	}
++
+ 	sigignore(SIGPIPE);
+ 	sigignore(SIGCHLD);
+ 
++	if (active)
++		return;
++
+ 	fprintf(stdout, PFX &quot;Stack end:  %p\n&quot;, __libc_stack_end);
+ 	/*
+ 	 * Don't you dare call malloc for another purpose in this lib!
+diff --git a/linuxhooking/libmemhack.c b/linuxhooking/libmemhack.c
+index bdf7c13..771b98b 100644
+--- a/linuxhooking/libmemhack.c
++++ b/linuxhooking/libmemhack.c
+@@ -103,6 +103,10 @@ static bool active = false;
+  */
+ extern void *__libc_stack_end;
+ 
++/* ask libc for our process name as 'argv[0]' and 'getenv(&quot;_&quot;)'
++   don't work here */
++extern char *__progname;
++
+ 
+ #define SET_IBUF_OFFS(count, i) \
+ 	for (i = 0; i &lt; count; ibuf_offs++) { \
+@@ -113,6 +117,7 @@ extern void *__libc_stack_end;
+ /* prepare memory hacking upon library load */
+ void __attribute ((constructor)) memhack_init (void)
+ {
++	char *proc_name, *expected;
+ 	ssize_t rbytes;
+ 	char ibuf[BUF_SIZE] = { 0 };
+ 	u32 i, j, k, ibuf_offs = 0, num_cfg = 0, cfg_offs = 0;
+@@ -120,9 +125,21 @@ void __attribute ((constructor)) memhack_init (void)
+ 	i32 read_tries, scanned = 0;
+ 	char gbt_buf[sizeof(GBT_CMD)] = { 0 };
+ 
++	/* only care for the game process (ignore shell and others) */
++	expected = getenv(&quot;UGT_GAME_PROC_NAME&quot;);
++	if (expected) {
++		proc_name = __progname;
++		printf(&quot;proc_name: %s, exp: %s\n&quot;, proc_name, expected);
++		if (strcmp(expected, proc_name) != 0)
++			return;
++	}
++
+ 	sigignore(SIGPIPE);
+ 	sigignore(SIGCHLD);
+ 
++	if (active)
++		return;
++
+ 	ifd = open(DYNMEM_IN, O_RDONLY | O_NONBLOCK);
+ 	if (ifd &lt; 0) {
+ 		perror(PFX &quot;open input&quot;);
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index c8b885c..66c810f 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -682,6 +682,7 @@ skip_memhack:
+ 	/* Run the preloaded game but not as root */
+ 	if (opt-&gt;preload_lib &amp;&amp; getuid() != 0) {
+ 		cout &lt;&lt; &quot;Starting preloaded game..&quot; &lt;&lt; endl;
++		setenv(&quot;UGT_GAME_PROC_NAME&quot;, opt-&gt;proc_name, 1);
+ 		run_preloader(opt);
+ 	}
+ 
+@@ -844,6 +845,7 @@ prepare_dynmem:
+ 				return -1;
+ #endif
+ 			cout &lt;&lt; &quot;Starting the game..&quot; &lt;&lt; endl;
++			setenv(&quot;UGT_GAME_PROC_NAME&quot;, opt.proc_name, 1);
+ 			run_game(&amp;opt);
+ 			sleep_sec(1);
+ 			pid = proc_to_pid(opt.proc_name);
+-- 
+1.7.9.5
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000100.html">[Ugtrain-devel] [PATCH] ugtrain: introduce 'game_params' support
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#101">[ date ]</a>
+              <a href="thread.html#101">[ thread ]</a>
+              <a href="subject.html#101">[ subject ]</a>
+              <a href="author.html#101">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

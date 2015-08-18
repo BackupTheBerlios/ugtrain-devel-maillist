@@ -1,0 +1,177 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] autotools: enhance build: make multilib	optional
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2014-January/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20autotools%3A%20enhance%20build%3A%20make%20multilib%0A%09optional&In-Reply-To=%3C1390422581-17622-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000089.html">
+   <LINK REL="Next"  HREF="000091.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] autotools: enhance build: make multilib	optional</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20autotools%3A%20enhance%20build%3A%20make%20multilib%0A%09optional&In-Reply-To=%3C1390422581-17622-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] autotools: enhance build: make multilib	optional">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Wed Jan 22 21:29:41 CET 2014</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000089.html">[Ugtrain-devel] [PATCH] examples: update the README for new config	options
+</A></li>
+        <LI>Next message: <A HREF="000091.html">[Ugtrain-devel] [PATCH] README: update limitations + build info
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#90">[ date ]</a>
+              <a href="thread.html#90">[ thread ]</a>
+              <a href="subject.html#90">[ subject ]</a>
+              <a href="author.html#90">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>* use single location for email address and app version
+* compile libmemdisc/hack as multilib only if requested
+* improve checks for 64 bit arch
+---
+ configure.in             |   42 ++++++++++++++++++++++++++----------------
+ linuxhooking/Makefile.am |    8 +++++++-
+ 2 files changed, 33 insertions(+), 17 deletions(-)
+
+diff --git a/configure.in b/configure.in
+index a94a941..baefc8d 100644
+--- a/configure.in
++++ b/configure.in
+@@ -1,16 +1,12 @@
+ #                                               -*- Autoconf -*-
+ # Process this file with autoconf to produce a configure script.
+ 
+-PACKAGE=ugtrain
+-VERSION=0.2.0
+-EMAIL=<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">sebastian.riemer at gmx.de</A>
+-
+-AC_INIT(ugtrain, 0.2.0, <A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">sebastian.riemer at gmx.de</A>)
++AC_INIT([ugtrain], [0.2.0-pre], [<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">ugtrain-devel at lists.berlios.de</A>])
+ 
+ AC_CONFIG_MACRO_DIR(m4)
+ AC_CANONICAL_SYSTEM
+ 
+-AM_INIT_AUTOMAKE(ugtrain, 0.2.0)
++AM_INIT_AUTOMAKE()
+ AM_MAINTAINER_MODE
+ 
+ AC_PROG_LIBTOOL
+@@ -23,24 +19,38 @@ LIB_AGE=0
+ VERSION_INFO=&quot;$LIB_CURRENT:$LIB_REVERSION:$LIB_AGE&quot;
+ AC_SUBST(VERSION_INFO)
+ 
++AC_ARG_ENABLE([multilib],
++  [  --enable-multilib  enable multilib support],
++  [], [enable_multilib=no])
++
+ # Checks for programs.
+ AC_PROG_CXX
+ AC_PROG_CC
+ AM_PROG_CC_STDC
+ 
+-case $target in
+-  *x86_64*)
+-    TMP_CC=&quot;$CC&quot;
+-    CC=&quot;$CC -m32&quot;
+-    AC_MSG_CHECKING([whether $CC works])
+-    AC_LINK_IFELSE([AC_LANG_PROGRAM()],AC_MSG_RESULT([yes]),
+-                   [AC_MSG_RESULT([no])
+-                    AC_MSG_ERROR([Cannot build a 32-bit program, you need to install 32-bit development libraries.])])
+-    CC=&quot;$TMP_CC&quot;
++# Check for 64-bit CPU
++bits64=&quot;no&quot;
++case $target_cpu in
++  x86_64)
++    bits64=&quot;yes&quot;
+     ;;
+ esac
++
++# Test multilib compile
++if test &quot;$enable_multilib&quot; != &quot;no&quot; -a bits64 != &quot;no&quot;; then
++  TMP_CC=&quot;$CC&quot;
++  CC=&quot;$CC -m32&quot;
++  AC_MSG_CHECKING([whether $CC works])
++  AC_LINK_IFELSE([AC_LANG_PROGRAM()],AC_MSG_RESULT([yes]),
++		 [AC_MSG_RESULT([no])
++		  AC_MSG_ERROR([Cannot build a 32-bit program, you need \
++				to install 32-bit development libraries.])])
++  CC=&quot;$TMP_CC&quot;
++fi
+ AM_CONDITIONAL([LINUX], test &quot;$target_os&quot; = &quot;linux-gnu&quot;)
+-AM_CONDITIONAL([BITS_64], test &quot;$target_cpu&quot; = &quot;x86_64&quot;)
++AM_CONDITIONAL([MULTILIB], test &quot;$enable_multilib&quot; != &quot;no&quot;)
++AM_CONDITIONAL([BITS_32], test &quot;$bits64&quot; = &quot;no&quot; -o &quot;$enable_multilib&quot; != &quot;no&quot;)
++AM_CONDITIONAL([BITS_64], test &quot;$bits64&quot; != &quot;no&quot;)
+ 
+ # Checks for pkg-config.
+ AC_SUBST(DEPS_CFLAGS)
+diff --git a/linuxhooking/Makefile.am b/linuxhooking/Makefile.am
+index 2aaff1e..7aa70ac 100644
+--- a/linuxhooking/Makefile.am
++++ b/linuxhooking/Makefile.am
+@@ -1,14 +1,19 @@
+ if LINUX
+ 
+ if BITS_64
++if MULTILIB
+ lib_LTLIBRARIES = libmemdisc32.la libmemhack32.la \
+-                  libmemdisc64.la libmemhack64.la
++		  libmemdisc64.la libmemhack64.la
++else
++lib_LTLIBRARIES = libmemdisc64.la libmemhack64.la
++endif
+ else
+ lib_LTLIBRARIES = libmemdisc32.la libmemhack32.la
+ endif
+ 
+ include_HEADERS =
+ 
++if BITS_32
+ libmemdisc32_la_SOURCES = libmemdisc.c
+ libmemhack32_la_SOURCES = libmemhack.c
+ libmemdisc32_la_CFLAGS = $(DEPS_CFLAGS) -m32 -Wall
+@@ -17,6 +22,7 @@ libmemdisc32_la_LIBADD = $(DEPS_LIBS)
+ libmemhack32_la_LIBADD = $(DEPS_LIBS)
+ libmemdisc32_la_LDFLAGS = -ldl
+ libmemhack32_la_LDFLAGS = -ldl
++endif
+ 
+ if BITS_64
+ libmemdisc64_la_SOURCES = libmemdisc.c
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000089.html">[Ugtrain-devel] [PATCH] examples: update the README for new config	options
+</A></li>
+	<LI>Next message: <A HREF="000091.html">[Ugtrain-devel] [PATCH] README: update limitations + build info
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#90">[ date ]</a>
+              <a href="thread.html#90">[ thread ]</a>
+              <a href="subject.html#90">[ subject ]</a>
+              <a href="author.html#90">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

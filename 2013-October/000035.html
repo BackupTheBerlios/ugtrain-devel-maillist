@@ -1,0 +1,572 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] linuxhooking,	ugtrain: switch over to reverse stack offset
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-October/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20linuxhooking%2C%0A%09ugtrain%3A%20switch%20over%20to%20reverse%20stack%20offset&In-Reply-To=%3C1381822995-5071-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000034.html">
+   <LINK REL="Next"  HREF="000036.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] linuxhooking,	ugtrain: switch over to reverse stack offset</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20linuxhooking%2C%0A%09ugtrain%3A%20switch%20over%20to%20reverse%20stack%20offset&In-Reply-To=%3C1381822995-5071-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] linuxhooking,	ugtrain: switch over to reverse stack offset">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Tue Oct 15 09:43:15 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000034.html">[Ugtrain-devel] [PATCH] libmemdisc/hack: use frame pointer,	not stack pointer
+</A></li>
+        <LI>Next message: <A HREF="000036.html">[Ugtrain-devel] [PATCH] examples: update README and 64 bit configs
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#35">[ date ]</a>
+              <a href="thread.html#35">[ thread ]</a>
+              <a href="subject.html#35">[ subject ]</a>
+              <a href="author.html#35">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>The game Warzone 2100 showed us that regular stack offsets are not
+adaptable. There can be a lot of them. E.g. this game has different
+ones for: mission start, building and loading from savegame. But
+they all have the same reverse stack offset.
+
+With the frame pointer pointing to our own stack frame start we can
+use the reverse stack offset, now. It is the same inside libmemdisc
+and libmemhack as we don't search in their own stack area anymore.
+Using a single reverse stack offset per memory class simplifies a
+lot. So let's do it!
+---
+ linuxhooking/libmemdisc.c |   35 +++++-------
+ linuxhooking/libmemhack.c |   36 +++++-------
+ src/cfgentry.h            |   13 +----
+ src/cfgparser.cpp         |   32 +----------
+ src/common.h              |    1 -
+ src/discovery.cpp         |  139 +++++++--------------------------------------
+ src/ugtrain.cpp           |   12 +---
+ 7 files changed, 58 insertions(+), 210 deletions(-)
+
+diff --git a/linuxhooking/libmemdisc.c b/linuxhooking/libmemdisc.c
+index c15c52e..91b9b57 100644
+--- a/linuxhooking/libmemdisc.c
++++ b/linuxhooking/libmemdisc.c
+@@ -195,8 +195,8 @@ void __attribute ((constructor)) memdisc_init (void)
+ 		}
+ 		break;
+ 	/*
+-	 * stage 3: Get the code addresses  (by backtracing)
+-	 *	By default we search the stack memory aligned for code
++	 * stage 3: Get the code address  (by backtracing)
++	 *	By default we search the stack memory reverse for code
+ 	 *	addresses. While doing so we don't respect stack frames in
+ 	 *	contrast to what GNU backtrace does to be less error prone.
+ 	 *	But the downside is that we find a lot of false positives.
+@@ -233,25 +233,20 @@ void __attribute ((constructor)) memdisc_init (void)
+ 		}
+ 		break;
+ 	/*
+-	 * stage 4/5: Get the stack offsets (if not using GNU backtrace)
++	 * stage 4/5: Get the reverse stack offset  (not for GNU backtrace)
+ 	 *	We can use this stage directly and skip stage 3 if we aren't
+-	 *	using GNU backtrace. Stack offsets are determined relative to
+-	 *	the stack end (__libc_stack_end). The advantage of knowing the
+-	 *	stack offsets is that we can directly check in libmemhack if
+-	 *	the code address is at this location which gives us better
+-	 *	performance and stability. But the downside is that they are
+-	 *	much more difficult to automatically adapt. There are possibly
+-	 *	multiple of them and for successful adaption they all have to
+-	 *	be triggered within the game. The difference between stage 4
+-	 *	and 5 can only be found in ugtrain. Stage 5 is used for the
+-	 *	automatic adaption there instead of initial discovery.
++	 *	using GNU backtrace. Reverse stack offsets are determined
++	 *	relative to the current stack frame pointer. The advantage of
++	 *	knowing the reverse stack offset is that we can directly check
++	 *	in libmemhack if the code address is at this location which
++	 *	gives us better performance and stability. But the downside is
++	 *	that we have to do one more step to discover and adapt them.
+ 	 *
+-	 *	E.g. in Warzone 2100 there are three different stack offsets
+-	 *	for the Droid class: Mission start, loading from savegame and
+-	 *	building them.
+-	 *
+-	 *	Here we have improvement potential: The reverse stack offset
+-	 *	would be unique for all calls of malloc for a memory class.
++	 *	The difference between the stages 4 and 5 can only be found in
++	 *	ugtrain. Stage 5 is used for the automatic adaption there
++	 *	instead of initial discovery. For successful adaption we need
++	 *	to trigger allocation of at least one memory object per class
++	 *	in the game.
+ 	 */
+ 	case '4':
+ 	case '5':
+@@ -335,7 +330,7 @@ static bool find_code_pointers (void *ffp, char *obuf, i32 obuf_offs)
+ 			     code_ptr == code_addr)) {
+ 				obuf_offs += sprintf(obuf + obuf_offs, &quot;;c%p;o%p&quot;,
+ 					code_ptr,
+-					(void *) (__libc_stack_end - offs));
++					(void *) (offs - ffp));
+ 				found = true;
+ 			} else if (stage == 3) {
+ 				obuf_offs += sprintf(obuf + obuf_offs, &quot;;c%p&quot;,
+diff --git a/linuxhooking/libmemhack.c b/linuxhooking/libmemhack.c
+index 293e558..6a04c36 100644
+--- a/linuxhooking/libmemhack.c
++++ b/linuxhooking/libmemhack.c
+@@ -1,4 +1,4 @@
+-/* libmemhack.c:    hacking of an unique malloc call (used by ugtrain)
++/* libmemhack.c:    hacking of unique malloc calls (used by ugtrain)
+  *
+  * Copyright (c) 2013, by:      Sebastian Riemer
+  *    All rights reserved.     &lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">sebastian.riemer at gmx.de</A>&gt;
+@@ -66,7 +66,7 @@ static bool use_gbt = false;
+ struct cfg {
+ 	size_t mem_size;
+ 	void *code_addr;
+-	void *stack_offs[MAX_STACK];
++	void *stack_offs;
+ 	u32 max_obj;
+ 	void **mem_addrs;  /* filled by malloc for free */
+ };
+@@ -192,13 +192,11 @@ void __attribute ((constructor)) memhack_init (void)
+ 		if (scanned != 2)
+ 			goto err;
+ 		SET_IBUF_OFFS(2, j);
+-		for (k = 0; k &lt; MAX_STACK; k++) {
+-			scanned = sscanf(ibuf + ibuf_offs, &quot;%p&quot;,
+-					 &amp;config[i]-&gt;stack_offs[k]);
+-			if (scanned != 1)
+-				goto err;
+-			SET_IBUF_OFFS(1, j);
+-		}
++		scanned = sscanf(ibuf + ibuf_offs, &quot;%p&quot;,
++				 &amp;config[i]-&gt;stack_offs);
++		if (scanned != 1)
++			goto err;
++		SET_IBUF_OFFS(1, j);
+ 
+ 		/* put stored memory addresses behind all cfg_s stuctures */
+ 		config[i]-&gt;max_obj = max_obj - 1;
+@@ -231,7 +229,7 @@ void __attribute ((constructor)) memhack_init (void)
+ 		fprintf(stdout, PFX &quot;config[%u]: mem_size: %zd; &quot;
+ 			&quot;code_addr: %p; stack_offs: %p\n&quot;, i,
+ 			config[i]-&gt;mem_size, config[i]-&gt;code_addr,
+-			config[i]-&gt;stack_offs[0]);
++			config[i]-&gt;stack_offs);
+ 	}
+ 
+ 	if (num_cfg &gt; 0)
+@@ -283,18 +281,14 @@ void *malloc (size_t size)
+ 				continue;
+ 			}
+ 
+-			for (j = 0; j &lt; MAX_STACK; j++) {
+-				stack_addr = PTR_SUB(void *, __libc_stack_end,
+-					config[i]-&gt;stack_offs[j]);
++			/* reverse stack offset method */
++			stack_addr = PTR_ADD(void *, ffp,
++				config[i]-&gt;stack_offs);
+ 
+-				if (ffp &gt;= stack_addr ||
+-				    *(ptr_t *)stack_addr !=
+-				    (ptr_t) config[i]-&gt;code_addr)
+-					continue;
+-				else
+-					goto found;
+-			}
+-			continue;
++			if (stack_addr &gt; __libc_stack_end - sizeof(void *) ||
++			    *(ptr_t *) stack_addr !=
++			    (ptr_t) config[i]-&gt;code_addr)
++				continue;
+ found:
+ 			printf(PFX &quot;malloc: mem_addr: %p, code_addr: %p\n&quot;,
+ 				mem_addr, config[i]-&gt;code_addr);
+diff --git a/src/cfgentry.h b/src/cfgentry.h
+index 0575adb..446ce14 100644
+--- a/src/cfgentry.h
++++ b/src/cfgentry.h
+@@ -51,9 +51,7 @@ public:
+ 	string name;
+ 	size_t mem_size;
+ 	void *code_addr;
+-	void *stack_offs[MAX_STACK];
+-	u8 num_stack;
+-	u8 num_sign;
++	void *stack_offs;
+ 
+ 	/* later determined values */
+ 	vector&lt;void *&gt; v_maddr;    /* set by malloc calls */
+@@ -64,13 +62,8 @@ public:
+ 
+ 	/* adaption */
+ 	void *adp_addr;               /* adapted code address */
+-	void *adp_soffs[MAX_STACK];   /* adapted stack offsets */
+-	bool soffs_ign[MAX_STACK];    /* stack offset for adaption only? */
+-	u32 cfg_lines[MAX_STACK];     /* to write back new cfg */
+-	u32 first_line;               /* dynmemstart line */
+-	u8 adp_sidx;                  /* index in adapted stack offs */
+-	bool discovered;
+-	bool adp_failed;
++	void *adp_soffs;              /* adapted reverse stack offset */
++	u32 cfg_line;                 /* to write back new cfg */
+ };
+ 
+ class CfgEntry {
+diff --git a/src/cfgparser.cpp b/src/cfgparser.cpp
+index 94ef2ca..482218c 100644
+--- a/src/cfgparser.cpp
++++ b/src/cfgparser.cpp
+@@ -32,8 +32,6 @@ enum {
+ 	NAME_CHECK_OBJ,
+ 	NAME_DYNMEM_START,
+ 	NAME_DYNMEM_END,
+-	NAME_DYNMEM_STACK,
+-	NAME_DYNMEM_IGN,
+ 	NAME_ADAPT,
+ 	NAME_ADP_REQ,
+ 	NAME_GAME_PATH,
+@@ -102,10 +100,6 @@ static string parse_value_name (string *line, u32 lnr, u32 *start,
+ 			*name_type = NAME_DYNMEM_START;
+ 		else if (ret.substr(6, string::npos) == &quot;end&quot;)
+ 			*name_type = NAME_DYNMEM_END;
+-		else if (ret.substr(6, string::npos) == &quot;stack&quot;)
+-			*name_type = NAME_DYNMEM_STACK;
+-		else if (ret.substr(6, string::npos) == &quot;ign&quot;)
+-			*name_type = NAME_DYNMEM_IGN;
+ 		else
+ 			*name_type = NAME_REGULAR;
+ 	} else if (ret.substr(0, 5) == &quot;check&quot;) {
+@@ -408,12 +402,9 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			dynmem_enp-&gt;mem_size = parse_value(&amp;line, lnr,
+ 				&amp;start, false, false, NULL, NULL);
+ 			dynmem_enp-&gt;code_addr = parse_address(&amp;line, lnr, &amp;start);
+-			dynmem_enp-&gt;stack_offs[dynmem_enp-&gt;num_stack] =
+-				parse_address(&amp;line, lnr, &amp;start);
++			dynmem_enp-&gt;stack_offs = parse_address(&amp;line, lnr, &amp;start);
+ 			dynmem_enp-&gt;v_maddr.clear();
+-			dynmem_enp-&gt;cfg_lines[dynmem_enp-&gt;num_stack] = lnr;
+-			dynmem_enp-&gt;first_line = lnr;
+-			dynmem_enp-&gt;num_stack++;
++			dynmem_enp-&gt;cfg_line = lnr;
+ 			break;
+ 
+ 		case NAME_DYNMEM_END:
+@@ -425,25 +416,6 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			}
+ 			break;
+ 
+-		case NAME_DYNMEM_STACK:
+-		case NAME_DYNMEM_IGN:
+-			if (in_dynmem) {
+-				if (dynmem_enp-&gt;num_stack &gt;= MAX_STACK)
+-					cfg_parse_err(&amp;line, lnr, start);
+-				dynmem_enp-&gt;stack_offs[dynmem_enp-&gt;num_stack] =
+-					parse_address(&amp;line, lnr, &amp;start);
+-				dynmem_enp-&gt;cfg_lines[dynmem_enp-&gt;num_stack] = lnr;
+-			} else {
+-				cfg_parse_err(&amp;line, lnr, start);
+-			}
+-			if (name_type == NAME_DYNMEM_IGN) {
+-				dynmem_enp-&gt;soffs_ign[dynmem_enp-&gt;num_stack] =
+-					true;
+-				dynmem_enp-&gt;num_sign++;
+-			}
+-			dynmem_enp-&gt;num_stack++;
+-			break;
+-
+ 		case NAME_ADAPT:
+ 			if (in_dynmem)
+ 				cfg_parse_err(&amp;line, lnr, start);
+diff --git a/src/common.h b/src/common.h
+index 84c594d..e61576b 100644
+--- a/src/common.h
++++ b/src/common.h
+@@ -44,7 +44,6 @@ typedef ulong ptr_t;
+ // Common defines
+ #define GBT_CMD   &quot;gbt&quot;  /* GNU backtrace() activation cmd */
+ #define MAX_GNUBT 3      /* for GNU backtrace() */
+-#define MAX_STACK 8
+ 
+ // for Windows as not in limits.h
+ #ifndef PIPE_BUF
+diff --git a/src/discovery.cpp b/src/discovery.cpp
+index 6b76381..445e24d 100644
+--- a/src/discovery.cpp
++++ b/src/discovery.cpp
+@@ -46,29 +46,20 @@ void take_over_config (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ {
+ 	list&lt;CfgEntry&gt;::iterator cfg_it;
+ 	DynMemEntry *tmp = NULL;
+-	u32 lnr, i;
++	u32 lnr;
+ 
+ 	for (cfg_it = cfg-&gt;begin(); cfg_it != cfg-&gt;end(); cfg_it++) {
+ 		if (!cfg_it-&gt;dynmem || cfg_it-&gt;dynmem == tmp)
+ 			continue;
+ 		tmp = cfg_it-&gt;dynmem;
+ 		tmp-&gt;code_addr = tmp-&gt;adp_addr;
+-		for (i = 0; i &lt; tmp-&gt;adp_sidx; i++) {
+-			if (!opt-&gt;use_gbt)
+-				tmp-&gt;stack_offs[i] = tmp-&gt;adp_soffs[i];
+-			lnr = tmp-&gt;cfg_lines[i];
+-			if (lnr == tmp-&gt;first_line)
+-				lines-&gt;at(lnr) = &quot;dynmemstart &quot; + tmp-&gt;name + &quot; &quot;
+-					+ to_string(tmp-&gt;mem_size) + &quot; &quot;
+-					+ to_string(tmp-&gt;code_addr) + &quot; &quot;
+-					+ to_string(tmp-&gt;stack_offs[i]);
+-			else if (tmp-&gt;soffs_ign[i])
+-				lines-&gt;at(lnr) = &quot;dynmemign &quot;
+-					+ to_string(tmp-&gt;stack_offs[i]);
+-			else
+-				lines-&gt;at(lnr) = &quot;dynmemstack &quot;
+-					+ to_string(tmp-&gt;stack_offs[i]);
+-		}
++		if (!opt-&gt;use_gbt)
++			tmp-&gt;stack_offs = tmp-&gt;adp_soffs;
++		lnr = tmp-&gt;cfg_line;
++		lines-&gt;at(lnr) = &quot;dynmemstart &quot; + tmp-&gt;name + &quot; &quot;
++			+ to_string(tmp-&gt;mem_size) + &quot; &quot;
++			+ to_string(tmp-&gt;code_addr) + &quot; &quot;
++			+ to_string(tmp-&gt;stack_offs);
+ 	}
+ 	// Adaption isn't required anymore
+ 	lnr = opt-&gt;adp_req_line;
+@@ -87,85 +78,11 @@ void take_over_config (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 
+ static void process_stage5_result (DynMemEntry *dynmem)
+ {
+-	u32 i;
+-	char ch;
+-
+ 	cout &lt;&lt; &quot;Class &quot; &lt;&lt; dynmem-&gt;name
+ 	     &lt;&lt; &quot;, old_code: &quot; &lt;&lt; hex &lt;&lt; dynmem-&gt;code_addr
+ 	     &lt;&lt; &quot;, new_code: &quot; &lt;&lt; dynmem-&gt;adp_addr &lt;&lt; dec &lt;&lt; endl;
+-	for (i = 0; i &lt; dynmem-&gt;num_stack; i++) {
+-		cout &lt;&lt; i &lt;&lt; &quot;: old_offs: &quot; &lt;&lt; hex &lt;&lt; dynmem-&gt;stack_offs[i]
+-		     &lt;&lt; &quot;, new_offs: &quot; &lt;&lt; dynmem-&gt;adp_soffs[i] &lt;&lt; dec
+-		     &lt;&lt; (dynmem-&gt;soffs_ign[i] ? &quot;, ignored&quot; : &quot;&quot;) &lt;&lt; endl;
+-	}
+-	cout &lt;&lt; &quot;Okay this way (y/n)? : &quot;;
+-	fflush(stdout);
+-	ch = 'n';
+-	ch = do_getch();
+-	cout &lt;&lt; ch &lt;&lt; endl;
+-	if (ch != 'y') {
+-		cerr &lt;&lt; &quot;Discovery failed!&quot; &lt;&lt; endl;
+-		exit(-1);
+-	}
+-}
+-
+-static void swap_adp_soffs (DynMemEntry *dynmem, u32 idx1, u32 idx2)
+-{
+-	void *tmp_adp_soffs;
+-
+-	tmp_adp_soffs = dynmem-&gt;adp_soffs[idx1];
+-	dynmem-&gt;adp_soffs[idx1] = dynmem-&gt;adp_soffs[idx2];
+-	dynmem-&gt;adp_soffs[idx2] = tmp_adp_soffs;
+-}
+-
+-static void swap_stack_offsets (DynMemEntry *dynmem, u32 idx1, u32 idx2)
+-{
+-	void *tmp_stack_offs;
+-	bool tmp_soffs_ign;
+-	u32 tmp_cfg_line;
+-
+-	tmp_stack_offs = dynmem-&gt;stack_offs[idx1];
+-	tmp_soffs_ign = dynmem-&gt;soffs_ign[idx1];
+-	tmp_cfg_line = dynmem-&gt;cfg_lines[idx1];
+-	dynmem-&gt;stack_offs[idx1] = dynmem-&gt;stack_offs[idx2];
+-	dynmem-&gt;soffs_ign[idx1] = dynmem-&gt;soffs_ign[idx2];
+-	dynmem-&gt;cfg_lines[idx1] = dynmem-&gt;cfg_lines[idx2];
+-	dynmem-&gt;stack_offs[idx2] = tmp_stack_offs;
+-	dynmem-&gt;soffs_ign[idx2] = tmp_soffs_ign;
+-	dynmem-&gt;cfg_lines[idx2] = tmp_cfg_line;
+-}
+-
+-static void bubsort_stack_offs (void **arr, u32 size, DynMemEntry *dynmem,
+-				void (*swap)(DynMemEntry *dynmem, u32, u32))
+-{
+-	u32 i, n, m;
+-
+-	n = size;
+-	do {
+-		for (i = 1, m = 0; i &lt; n; i++) {
+-			if (arr[i] == NULL)
+-				break;
+-			if ((ptr_t) arr[i - 1] &gt; (ptr_t) arr[i]) {
+-				swap(dynmem, i - 1, i);
+-				m = i;
+-			}
+-		}
+-		n = m;
+-	} while (n &gt; 0);
+-}
+-
+-/*
+- * Sort stack offsets so that adaption order becomes
+- * independent from the order in the config.
+- * We use simple bubble sort here.
+- */
+-static void sort_stack_offsets (DynMemEntry *dynmem)
+-{
+-	bubsort_stack_offs(dynmem-&gt;stack_offs, MAX_STACK, dynmem,
+-			   swap_stack_offsets);
+-
+-	bubsort_stack_offs(dynmem-&gt;adp_soffs, MAX_STACK, dynmem,
+-			   swap_adp_soffs);
++	cout &lt;&lt; &quot;old_offs: &quot; &lt;&lt; hex &lt;&lt; dynmem-&gt;stack_offs
++	     &lt;&lt; &quot;, new_offs: &quot; &lt;&lt; dynmem-&gt;adp_soffs &lt;&lt; dec &lt;&lt; endl;
+ }
+ 
+ static i32 postproc_stage5 (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+@@ -181,21 +98,13 @@ static i32 postproc_stage5 (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 			continue;
+ 		tmp = cfg_it-&gt;dynmem;
+ 
+-		if (tmp-&gt;discovered) {
++		if (tmp-&gt;adp_addr &amp;&amp; opt-&gt;disc_addr == tmp-&gt;adp_addr &amp;&amp;
++		    tmp-&gt;adp_soffs) {
++			process_stage5_result(tmp);
+ 			discovered = true;
+ 			continue;
+ 		}
+-		if (tmp-&gt;adp_addr == opt-&gt;disc_addr &amp;&amp; !tmp-&gt;adp_failed &amp;&amp;
+-		    tmp-&gt;adp_sidx &gt;= tmp-&gt;num_stack - tmp-&gt;num_sign) {
+-			sort_stack_offsets(tmp);
+-			if (tmp-&gt;num_stack &gt; 1)
+-				process_stage5_result(tmp);
+-			tmp-&gt;discovered = true;
+-			discovered = true;
+-			continue;
+-		}
+-		if (!(tmp-&gt;adp_addr &amp;&amp; !tmp-&gt;adp_failed &amp;&amp;
+-		      tmp-&gt;adp_sidx &gt;= tmp-&gt;num_stack - tmp-&gt;num_sign)) {
++		if (!(tmp-&gt;adp_addr &amp;&amp; tmp-&gt;adp_soffs)) {
+ 			cout &lt;&lt; &quot;Undiscovered class(es) found!&quot; &lt;&lt; endl;
+ 			if (discovered) {
+ 				cout &lt;&lt; &quot;Next discovery run (y/n)? : &quot;;
+@@ -384,28 +293,22 @@ static void process_disc5_output (list&lt;CfgEntry&gt; *cfg,
+ 				  void *stack_offs)
+ {
+ 	list&lt;CfgEntry&gt;::iterator it;
+-	u32 i;
+ 
+ 	cout &lt;&lt; &quot;Discovery output: &quot; &lt;&lt; endl;
+ 	cout &lt;&lt; &quot;m&quot; &lt;&lt; hex &lt;&lt; mem_addr &lt;&lt; dec &lt;&lt; &quot;;s&quot;
+ 	     &lt;&lt; mem_size &lt;&lt; hex &lt;&lt; &quot;;c&quot; &lt;&lt; code_addr
+ 	     &lt;&lt; &quot;;o&quot; &lt;&lt; stack_offs &lt;&lt; dec &lt;&lt; endl;
+ 
+-	// find object and set adp_soffs[idx]
++	// find object and set adp_soffs
+ 	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
+ 		if (it-&gt;dynmem &amp;&amp;
+ 		    it-&gt;dynmem-&gt;adp_addr == code_addr) {
+-			for (i = 0; i &lt; it-&gt;dynmem-&gt;num_stack; i++) {
+-				if (it-&gt;dynmem-&gt;adp_soffs[i] == stack_offs) {
+-					goto out;
+-				} else if (!it-&gt;dynmem-&gt;adp_soffs[i]) {
+-					it-&gt;dynmem-&gt;adp_soffs[i] = stack_offs;
+-					it-&gt;dynmem-&gt;adp_sidx++;
+-					goto out;
+-				}
++			if (it-&gt;dynmem-&gt;adp_soffs == stack_offs) {
++				goto out;
++			} else if (!it-&gt;dynmem-&gt;adp_soffs) {
++				it-&gt;dynmem-&gt;adp_soffs = stack_offs;
++				goto out;
+ 			}
+-			// too many stack offsets
+-			it-&gt;dynmem-&gt;adp_failed = true;
+ 			break;
+ 		}
+ 	}
+@@ -559,7 +462,7 @@ i32 prepare_discovery (struct app_options *opt, list&lt;CfgEntry&gt; *cfg)
+ 		} else {
+ 			for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
+ 				if (it-&gt;dynmem &amp;&amp; it-&gt;dynmem-&gt;adp_addr &amp;&amp;
+-				    it-&gt;dynmem-&gt;adp_sidx == 0) {
++				    !it-&gt;dynmem-&gt;adp_soffs) {
+ 					opt-&gt;disc_addr = it-&gt;dynmem-&gt;adp_addr;
+ 					goto found;
+ 				}
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index 9f15850..86ab487 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -135,7 +135,7 @@ static void output_config (list&lt;CfgEntry&gt; *cfg)
+ 			cout &lt;&lt; &quot;dynmem: &quot; &lt;&lt; cfg_en.dynmem-&gt;name &lt;&lt; &quot; &quot;
+ 				&lt;&lt; cfg_en.dynmem-&gt;mem_size &lt;&lt; &quot; &quot;
+ 				&lt;&lt; hex &lt;&lt; cfg_en.dynmem-&gt;code_addr &lt;&lt; &quot; &quot;
+-				&lt;&lt; cfg_en.dynmem-&gt;stack_offs[0] &lt;&lt; dec &lt;&lt; endl;
++				&lt;&lt; cfg_en.dynmem-&gt;stack_offs &lt;&lt; dec &lt;&lt; endl;
+ 		cout &lt;&lt; cfg_en.name &lt;&lt; &quot; &quot; &lt;&lt; hex &lt;&lt; cfg_en.addr &lt;&lt; dec;
+ 		cout &lt;&lt; &quot; &quot; &lt;&lt; cfg_en.size &lt;&lt; &quot; &quot;;
+ 		if (cfg_en.is_float) {
+@@ -517,7 +517,6 @@ static i32 prepare_dynmem (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ {
+ 	char obuf[PIPE_BUF] = { 0 };
+ 	u32 num_cfg = 0, num_cfg_len = 0, pos = 0;
+-	i32 i;
+ 	void *old_code_addr = NULL;
+ 	list&lt;CfgEntry&gt;::iterator it;
+ #ifdef __linux__
+@@ -549,12 +548,8 @@ static i32 prepare_dynmem (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 			pos += snprintf(obuf + pos, sizeof(obuf) - pos,
+ 				&quot;;%lu;%p&quot;, (ulong) it-&gt;dynmem-&gt;mem_size,
+ 				it-&gt;dynmem-&gt;code_addr);
+-			for (i = 0; i &lt; MAX_STACK; i++) {
+-				if (it-&gt;dynmem-&gt;soffs_ign[i])
+-					it-&gt;dynmem-&gt;stack_offs[i] = NULL;
+ 				pos += snprintf(obuf + pos, sizeof(obuf) - pos,
+-					&quot;;%p&quot;, it-&gt;dynmem-&gt;stack_offs[i]);
+-			}
++					&quot;;%p&quot;, it-&gt;dynmem-&gt;stack_offs);
+ 			old_code_addr = it-&gt;dynmem-&gt;code_addr;
+ 		}
+ 	}
+@@ -672,9 +667,6 @@ static i32 parse_adapt_result (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 			if (it-&gt;dynmem &amp;&amp; !it-&gt;dynmem-&gt;adp_addr &amp;&amp;
+ 			    it-&gt;dynmem-&gt;name == *obj_name) {
+ 				it-&gt;dynmem-&gt;adp_addr = code_addr;
+-				if (opt-&gt;use_gbt)
+-					it-&gt;dynmem-&gt;adp_sidx =
+-						it-&gt;dynmem-&gt;num_stack;
+ 				found = 1;
+ 				break;
+ 			}
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000034.html">[Ugtrain-devel] [PATCH] libmemdisc/hack: use frame pointer,	not stack pointer
+</A></li>
+	<LI>Next message: <A HREF="000036.html">[Ugtrain-devel] [PATCH] examples: update README and 64 bit configs
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#35">[ date ]</a>
+              <a href="thread.html#35">[ thread ]</a>
+              <a href="subject.html#35">[ subject ]</a>
+              <a href="author.html#35">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

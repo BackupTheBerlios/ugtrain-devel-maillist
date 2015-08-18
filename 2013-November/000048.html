@@ -1,0 +1,106 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] Fix &quot;ugtrain: do not attach memory if no	active config&quot;
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-November/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20Fix%20%22ugtrain%3A%20do%20not%20attach%20memory%20if%20no%0A%09active%20config%22&In-Reply-To=%3C1384242223-2947-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000050.html">
+   <LINK REL="Next"  HREF="000049.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] Fix &quot;ugtrain: do not attach memory if no	active config&quot;</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20Fix%20%22ugtrain%3A%20do%20not%20attach%20memory%20if%20no%0A%09active%20config%22&In-Reply-To=%3C1384242223-2947-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] Fix &quot;ugtrain: do not attach memory if no	active config&quot;">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Tue Nov 12 08:43:43 CET 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000050.html">[Ugtrain-devel] [PATCH 5/5] ugtrain: do not attach memory if no	active config
+</A></li>
+        <LI>Next message: <A HREF="000049.html">[Ugtrain-devel] [PATCH] ugtrain,	system: Introduce pid_is_running() function
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#48">[ date ]</a>
+              <a href="thread.html#48">[ thread ]</a>
+              <a href="subject.html#48">[ subject ]</a>
+              <a href="author.html#48">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Fixes commit: bab01de
+
+Using a goto is not the best solution. We also don't want greater
+source code indention. After reading the FIFO all other things
+iterate over the active config. So just use a 'continue'.
+---
+ src/ugtrain.cpp |    7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index f4f13d4..cadbde0 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -1200,6 +1200,9 @@ prepare_dynmem:
+ 			}
+ 		}
+ 
++		if (cfg_act-&gt;empty())
++			continue;
++
+ 		// allocate old values per memory object
+ 		for (it = cfg_act-&gt;begin(); it != cfg_act-&gt;end(); it++) {
+ 			cfg_en = *it;
+@@ -1213,9 +1216,6 @@ prepare_dynmem:
+ 			}
+ 		}
+ 
+-		if (cfg_act-&gt;empty())
+-			goto skip_inactive;
+-
+ 		if (memattach(pid) != 0) {
+ 			cerr &lt;&lt; &quot;PTRACE ATTACH ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
+ 			return -1;
+@@ -1260,7 +1260,6 @@ prepare_dynmem:
+ 			return -1;
+ 		}
+ 
+-skip_inactive:
+ 		// remove old values marked to be removed by object check
+ 		for (it = cfg_act-&gt;begin(); it != cfg_act-&gt;end(); it++) {
+ 			cfg_en = *it;
+-- 
+1.7.9.5
+
+</PRE>
+
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000050.html">[Ugtrain-devel] [PATCH 5/5] ugtrain: do not attach memory if no	active config
+</A></li>
+	<LI>Next message: <A HREF="000049.html">[Ugtrain-devel] [PATCH] ugtrain,	system: Introduce pid_is_running() function
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#48">[ date ]</a>
+              <a href="thread.html#48">[ thread ]</a>
+              <a href="subject.html#48">[ subject ]</a>
+              <a href="author.html#48">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

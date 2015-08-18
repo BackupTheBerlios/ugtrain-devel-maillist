@@ -1,0 +1,217 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain: read multiple pages from the	dynmem FIFO
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2014-January/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20read%20multiple%20pages%20from%20the%0A%09dynmem%20FIFO&In-Reply-To=%3C1388760248-17962-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000074.html">
+   <LINK REL="Next"  HREF="000076.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain: read multiple pages from the	dynmem FIFO</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20read%20multiple%20pages%20from%20the%0A%09dynmem%20FIFO&In-Reply-To=%3C1388760248-17962-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain: read multiple pages from the	dynmem FIFO">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Fri Jan  3 15:44:08 CET 2014</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000074.html">[Ugtrain-devel] [PATCH] ugtrain: update victim memory r/w error	messages
+</A></li>
+        <LI>Next message: <A HREF="000076.html">[Ugtrain-devel] [PATCH 0/4] adapt: enhance Warzone 2100 adaption
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#75">[ date ]</a>
+              <a href="thread.html#75">[ thread ]</a>
+              <a href="subject.html#75">[ subject ]</a>
+              <a href="author.html#75">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>In the second single-player challenge in Warzone 2100 there are
+806 Structure objects which are created at once. This is too much
+for a single page read and leads to instability and victim memory
+r/w errors. So read until the FIFO buffer is empty.
+---
+ src/discovery.cpp  |    2 +-
+ src/fifoparser.cpp |   26 +++++++++++++-------------
+ src/fifoparser.h   |    8 ++++----
+ src/ugtrain.cpp    |    7 +++++--
+ 4 files changed, 23 insertions(+), 20 deletions(-)
+
+diff --git a/src/discovery.cpp b/src/discovery.cpp
+index fa7bf1f..045b210 100644
+--- a/src/discovery.cpp
++++ b/src/discovery.cpp
+@@ -261,7 +261,7 @@ static i32 postproc_stage1234 (struct app_options *opt, list&lt;CfgEntry&gt; *cfg)
+ 
+ 	while (true) {
+ 		if (read_dynmem_buf(cfg, &amp;dpp, ifd, pmask, true,
+-		    process_disc1234_malloc, process_disc1_free))
++		    process_disc1234_malloc, process_disc1_free) &lt; 0)
+ 			break;
+ 	}
+ 
+diff --git a/src/fifoparser.cpp b/src/fifoparser.cpp
+index 52b0c8d..43bd81a 100644
+--- a/src/fifoparser.cpp
++++ b/src/fifoparser.cpp
+@@ -24,10 +24,10 @@
+ #define REVERSE_EOF -3  // reverse file read end
+ 
+ 
+-i32 read_dynmem_buf (list&lt;CfgEntry&gt; *cfg, void *argp, i32 ifd, int pmask, bool reverse,
+-		     void (*mf)(list&lt;CfgEntry&gt; *, struct post_parse *, void *,
+-				void *, size_t, void *, void *),
+-		     void (*ff)(list&lt;CfgEntry&gt; *, void *, void *))
++ssize_t read_dynmem_buf (list&lt;CfgEntry&gt; *cfg, void *argp, i32 ifd, int pmask, bool reverse,
++			 void (*mf)(list&lt;CfgEntry&gt; *, struct post_parse *, void *,
++				    void *, size_t, void *, void *),
++			 void (*ff)(list&lt;CfgEntry&gt; *, void *, void *))
+ {
+ 	void *mem_addr = NULL, *code_addr = NULL, *stack_offs = NULL;
+ 	static void *heap_start = NULL;
+@@ -45,7 +45,7 @@ i32 read_dynmem_buf (list&lt;CfgEntry&gt; *cfg, void *argp, i32 ifd, int pmask, bool r
+ 			// read heap start from file first
+ 			tmp_ilen = read(ifd, ibuf, 50);
+ 			if (tmp_ilen &lt;= 0 &amp;&amp; argp)
+-				return 1;
++				return -1;
+ 			if (sscanf(msg_start, &quot;%c&quot;, &amp;scan_ch) != 1)
+ 				goto parse_err;
+ 			if (scan_ch == 'h') {
+@@ -59,18 +59,18 @@ i32 read_dynmem_buf (list&lt;CfgEntry&gt; *cfg, void *argp, i32 ifd, int pmask, bool r
+ 			fd_offs = lseek(ifd, 0, SEEK_END);
+ 		}
+ 		if (fd_offs &lt; 0)
+-			return 1;
++			return -1;
+ 		// we use ipos as read length here
+ 		ipos = fd_offs;
+ 		if ((unsigned) ipos &gt; sizeof(ibuf) - 1 - ilen) {
+ 			ipos = sizeof(ibuf) - 1 - ilen;
+ 			fd_offs = lseek(ifd, fd_offs - ipos, SEEK_SET);
+ 			if (fd_offs &lt; 0)
+-				return 1;
++				return -1;
+ 		} else {
+ 			fd_offs = lseek(ifd, 0, SEEK_SET);
+ 			if (fd_offs &lt; 0)
+-				return 1;
++				return -1;
+ 			fd_offs = REVERSE_EOF;
+ 		}
+ 		// move rest to the end
+@@ -95,21 +95,21 @@ next:
+ 		if (reverse) {
+ 			msg_end = strrchr(ibuf, '\n');
+ 			if (msg_end == NULL)
+-				return 0;
++				return tmp_ilen;
+ 			else
+ 				*msg_end = '\0';
+ 			msg_start = strrchr(ibuf, '\n');
+ 			if (msg_start == NULL) {
+ 				// incomplete message, restore message end
+ 				*msg_end = '\n';
+-				return 0;
++				return tmp_ilen;
+ 			} else {
+ 				msg_start += 1;
+ 			}
+ 		} else {
+ 			msg_end = strchr(ibuf, '\n');
+ 			if (msg_end == NULL)
+-				return 0;
++				return tmp_ilen;
+ 		}
+ 
+ 		if (sscanf(msg_start, &quot;%c&quot;, &amp;scan_ch) != 1)
+@@ -204,9 +204,9 @@ skip_o:
+ 
+ 		goto next;
+ 	} else if (argp) {
+-		return 1;
++		return -1;
+ 	}
+-	return 0;
++	return tmp_ilen;
+ 
+ parse_err:
+ 	cerr &lt;&lt; &quot;parse error at ppos: &quot; &lt;&lt; ppos &lt;&lt; endl;
+diff --git a/src/fifoparser.h b/src/fifoparser.h
+index d9431da..84a4560 100644
+--- a/src/fifoparser.h
++++ b/src/fifoparser.h
+@@ -32,8 +32,8 @@ struct post_parse {
+ 	void	*argp;
+ };
+ 
+-i32 read_dynmem_buf (list&lt;CfgEntry&gt; *cfg, void *argp, i32 ifd, int pmask, bool reverse,
+-		     void (*mf)(list&lt;CfgEntry&gt; *, struct post_parse *, void *,
+-				void *, size_t, void *, void *),
+-		     void (*ff)(list&lt;CfgEntry&gt; *, void *, void *));
++ssize_t read_dynmem_buf (list&lt;CfgEntry&gt; *cfg, void *argp, i32 ifd, int pmask, bool reverse,
++			 void (*mf)(list&lt;CfgEntry&gt; *, struct post_parse *, void *,
++				    void *, size_t, void *, void *),
++			 void (*ff)(list&lt;CfgEntry&gt; *, void *, void *));
+ #endif
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index aefdabe..0ec9968 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -1251,6 +1251,7 @@ i32 main (i32 argc, char **argv, char **env)
+ 	bool emptycfg = false;
+ 	u32 mem_idx;
+ 	bool is_dynmem;
++	ssize_t rbytes;
+ 
+ 	atexit(restore_getch);
+ 
+@@ -1460,8 +1461,10 @@ prepare_dynmem:
+ 		}
+ 
+ 		// get allocated and freed objects (TIME CRITICAL!)
+-		read_dynmem_buf(&amp;cfg, NULL, ifd, pmask, false,
+-				set_dynmem_addr, unset_dynmem_addr);
++		do {
++			rbytes = read_dynmem_buf(&amp;cfg, NULL, ifd, pmask, false,
++						 set_dynmem_addr, unset_dynmem_addr);
++		} while (rbytes &gt; 0);
+ 
+ 		// print allocated and freed object counts
+ 		old_dynmem = NULL;
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000074.html">[Ugtrain-devel] [PATCH] ugtrain: update victim memory r/w error	messages
+</A></li>
+	<LI>Next message: <A HREF="000076.html">[Ugtrain-devel] [PATCH 0/4] adapt: enhance Warzone 2100 adaption
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#75">[ date ]</a>
+              <a href="thread.html#75">[ thread ]</a>
+              <a href="subject.html#75">[ subject ]</a>
+              <a href="author.html#75">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

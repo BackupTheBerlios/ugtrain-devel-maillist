@@ -1,0 +1,637 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 1/3] ugtrain: introduce pointer following	support
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-November/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%201/3%5D%20ugtrain%3A%20introduce%20pointer%20following%0A%09support&In-Reply-To=%3C1385716038-9745-2-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000061.html">
+   <LINK REL="Next"  HREF="000063.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 1/3] ugtrain: introduce pointer following	support</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%201/3%5D%20ugtrain%3A%20introduce%20pointer%20following%0A%09support&In-Reply-To=%3C1385716038-9745-2-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 1/3] ugtrain: introduce pointer following	support">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Fri Nov 29 10:07:16 CET 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000061.html">[Ugtrain-devel] [PATCH 0/3] ugtrain: complete Warzone 2100 cheating
+</A></li>
+        <LI>Next message: <A HREF="000063.html">[Ugtrain-devel] [PATCH 2/3] ugtrain: introduce check from reference
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#62">[ date ]</a>
+              <a href="thread.html#62">[ thread ]</a>
+              <a href="subject.html#62">[ subject ]</a>
+              <a href="author.html#62">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>This patch adds the following:
+* new pointer memory definition with name and size
+* target pointer pointing to that pointer memory
+* pointer state for waiting for the pointer to be settled
+* own config value and active config list per pointer memory
+* following of pointers &quot;once&quot; or &quot;always&quot;
+
+This patch adds the following parts:
+* parsing (&quot;ptrmemstart&quot;, &quot;ptrmemend&quot;, type &quot;p&quot;)
+* dynamic value allocation for pointer memory
+* dumping (p&lt;ptr_nr&gt;_&lt;obj_id&gt;.dump)
+* processing (following the pointer with type &quot;p&quot;)
+* output (with offset from pointer memory)
+
+Limitations:
+* allowing pointers only from within dynamic memory
+* not allowing nested pointers
+
+Example: Warzone 2100 (to get Structure type and functionality)
+---
+ src/cfgentry.h    |   26 ++++++++
+ src/cfgparser.cpp |  116 ++++++++++++++++++++++++++++++------
+ src/ugtrain.cpp   |  171 ++++++++++++++++++++++++++++++++++++++++++++++++-----
+ 3 files changed, 280 insertions(+), 33 deletions(-)
+
+diff --git a/src/cfgentry.h b/src/cfgentry.h
+index 2d2019b..297a4be 100644
+--- a/src/cfgentry.h
++++ b/src/cfgentry.h
+@@ -22,6 +22,8 @@
+ #include &quot;common.h&quot;
+ 
+ 
++class CfgEntry;
++
+ class DynMemEntry {
+ public:
+ 	string name;
+@@ -42,6 +44,25 @@ public:
+ 	u32 cfg_line;                 // to write back new cfg
+ };
+ 
++typedef enum {
++	PTR_INIT,
++	PTR_SETTLED,
++	PTR_DONE,
++} ptr_e;
++
++class PtrMemEntry {
++public:
++	string name;
++	size_t mem_size;
++
++	list&lt;CfgEntry *&gt; cfg;
++	list&lt;CfgEntry *&gt; cfg_act;
++
++	DynMemEntry *dynmem;
++	vector&lt;ptr_e&gt; v_state;
++	vector&lt;void *&gt; v_offs;
++};
++
+ 
+ typedef enum {
+ 	DYN_VAL_OFF,
+@@ -49,6 +70,8 @@ typedef enum {
+ 	DYN_VAL_MAX,
+ 	DYN_VAL_ADDR,
+ 	DYN_VAL_WATCH,
++	DYN_VAL_PTR_ONCE,
++	DYN_VAL_PTR_ALWAYS,
+ } dynval_e;
+ 
+ typedef enum {
+@@ -87,6 +110,9 @@ public:
+ 	// dynamic memory
+ 	DynMemEntry *dynmem;
+ 	vector&lt;i64&gt; v_oldval;   // old value per object
++	// pointer memory
++	PtrMemEntry *ptrmem;
++	PtrMemEntry *ptrtgt;
+ };
+ 
+ #endif
+diff --git a/src/cfgparser.cpp b/src/cfgparser.cpp
+index 72f5e30..ccc5aff 100644
+--- a/src/cfgparser.cpp
++++ b/src/cfgparser.cpp
+@@ -26,17 +26,34 @@ using namespace std;
+ #define CFG_DIR &quot;~/.ugtrain/&quot;
+ #define CFG_EXT &quot;.conf&quot;
+ 
+-enum {
++typedef enum {
++	NAME_GAME_PATH,
++	NAME_USE_GBT,
+ 	NAME_REGULAR,
+ 	NAME_CHECK,
+ 	NAME_CHECK_OBJ,
+ 	NAME_DYNMEM_START,
+ 	NAME_DYNMEM_END,
++	NAME_PTRMEM_START,
++	NAME_PTRMEM_END,
+ 	NAME_ADAPT,
+-	NAME_ADP_REQ,
+-	NAME_GAME_PATH,
+-	NAME_USE_GBT
+-};
++	NAME_ADP_REQ
++} name_e;
++
++static PtrMemEntry *find_ptr_mem (list&lt;CfgEntry&gt; *cfg, string *name)
++{
++	list&lt;CfgEntry&gt;::iterator it;
++	PtrMemEntry *old_ptrmem = NULL;
++
++	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
++		if (it-&gt;ptrmem &amp;&amp; it-&gt;ptrmem != old_ptrmem) {
++			old_ptrmem = it-&gt;ptrmem;
++			if (it-&gt;ptrmem-&gt;name == *name)
++				return it-&gt;ptrmem;
++		}
++	}
++	return NULL;
++}
+ 
+ static inline void proc_name_err (string *line, u32 lidx)
+ {
+@@ -76,7 +93,7 @@ static char *parse_proc_name (string *line, u32 *start)
+ }
+ 
+ static string parse_value_name (string *line, u32 lnr, u32 *start,
+-				i32 *name_type)
++				name_e *name_type)
+ {
+ 	u32 lidx;
+ 	string ret;
+@@ -102,6 +119,13 @@ static string parse_value_name (string *line, u32 lnr, u32 *start,
+ 			*name_type = NAME_DYNMEM_END;
+ 		else
+ 			*name_type = NAME_REGULAR;
++	} else if (ret.substr(0, 6) == &quot;ptrmem&quot;) {
++		if (ret.substr(6, string::npos) == &quot;start&quot;)
++			*name_type = NAME_PTRMEM_START;
++		else if (ret.substr(6, string::npos) == &quot;end&quot;)
++			*name_type = NAME_PTRMEM_END;
++		else
++			*name_type = NAME_REGULAR;
+ 	} else if (ret.substr(0, 5) == &quot;check&quot;) {
+ 		if (ret.size() == 5)
+ 			*name_type = NAME_CHECK;
+@@ -179,6 +203,10 @@ static i32 parse_data_type (string *line, u32 lnr, u32 *start,
+ 		*is_signed = true;
+ 		*is_float = true;
+ 		break;
++	case 'p':
++		lidx += 2;
++		*start = lidx;
++		return 0;
+ 	default:
+ 		cfg_parse_err(line, lnr, --lidx);
+ 		break;
+@@ -263,6 +291,10 @@ skip_check:
+ 				cfg_parse_err(line, lnr, lidx);
+ 		} else if (tmp_str == &quot;watch&quot;) {
+ 			*dynval = DYN_VAL_WATCH;
++		} else if (tmp_str == &quot;once&quot;) {
++			*dynval = DYN_VAL_PTR_ONCE;
++		} else if (tmp_str == &quot;always&quot;) {
++			*dynval = DYN_VAL_PTR_ALWAYS;
+ 		} else {
+ 			cfg_parse_err(line, lnr, lidx);
+ 		}
+@@ -351,12 +383,14 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 	CfgEntry cfg_en;
+ 	CfgEntry *cfg_enp;
+ 	list&lt;CfgEntry*&gt; *cfg_act = new list&lt;CfgEntry*&gt;();
++	list&lt;CfgEntry*&gt; *used_cfg_act = NULL;
+ 	CheckEntry chk_en;
+ 	list&lt;CheckEntry&gt; *chk_lp;
+ 	DynMemEntry *dynmem_enp = NULL;
++	PtrMemEntry *ptrmem_enp = NULL;
+ 	u32 lnr, start = 0;
+-	i32 name_type;
+-	bool in_dynmem = false;
++	name_e name_type;
++	bool in_dynmem = false, in_ptrmem = false;
+ 	string line;
+ 	string home(opt-&gt;home);
+ 	string tmp_str;
+@@ -400,6 +434,8 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			break;
+ 
+ 		case NAME_DYNMEM_START:
++			if (in_ptrmem)
++				cfg_parse_err(&amp;line, lnr, start);
+ 			in_dynmem = true;
+ 			dynmem_enp = new DynMemEntry();
+ 			dynmem_enp-&gt;name = parse_value_name(&amp;line, lnr,
+@@ -421,9 +457,29 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			}
+ 			break;
+ 
+-		case NAME_ADAPT:
++		case NAME_PTRMEM_START:
+ 			if (in_dynmem)
+ 				cfg_parse_err(&amp;line, lnr, start);
++			in_ptrmem = true;
++			ptrmem_enp = new PtrMemEntry();
++			ptrmem_enp-&gt;name = parse_value_name(&amp;line, lnr,
++				&amp;start, &amp;name_type);
++			ptrmem_enp-&gt;mem_size = parse_value(&amp;line, lnr,
++				&amp;start, false, false, NULL, NULL);
++			break;
++
++		case NAME_PTRMEM_END:
++			if (in_ptrmem) {
++				in_ptrmem = false;
++				ptrmem_enp = NULL;
++			} else {
++				cfg_parse_err(&amp;line, lnr, start);
++			}
++			break;
++
++		case NAME_ADAPT:
++			if (in_dynmem || in_ptrmem)
++				cfg_parse_err(&amp;line, lnr, start);
+ 
+ 			tmp_str = string(&quot;&quot;);
+ 			pos = path-&gt;rfind(&quot;/&quot;);
+@@ -437,7 +493,7 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			break;
+ 
+ 		case NAME_ADP_REQ:
+-			if (in_dynmem)
++			if (in_dynmem || in_ptrmem)
+ 				cfg_parse_err(&amp;line, lnr, start);
+ 
+ 			if (parse_value(&amp;line, lnr, &amp;start,
+@@ -447,7 +503,7 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			break;
+ 
+ 		case NAME_GAME_PATH:
+-			if (in_dynmem)
++			if (in_dynmem || in_ptrmem)
+ 				cfg_parse_err(&amp;line, lnr, start);
+ 
+ 			tmp_str = parse_value_name(&amp;line,
+@@ -464,7 +520,7 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			break;
+ 
+ 		case NAME_USE_GBT:
+-			if (in_dynmem)
++			if (in_dynmem || in_ptrmem)
+ 				cfg_parse_err(&amp;line, lnr, start);
+ 
+ 			opt-&gt;use_gbt = true;
+@@ -476,20 +532,42 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			cfg_en.addr = parse_address(&amp;line, lnr, &amp;start);
+ 			cfg_en.size = parse_data_type(&amp;line, lnr, &amp;start,
+ 				&amp;cfg_en.is_signed, &amp;cfg_en.is_float);
++			if (!cfg_en.size) {
++				tmp_str = parse_value_name(&amp;line, lnr, &amp;start, &amp;name_type);
++				cfg_en.ptrtgt = find_ptr_mem(cfg, &amp;tmp_str);
++				if (!cfg_en.ptrtgt)
++					cfg_parse_err(&amp;line, lnr, start - 1);
++				if (in_dynmem)
++					cfg_en.ptrtgt-&gt;dynmem = dynmem_enp;
++				else
++					cfg_parse_err(&amp;line, lnr, start);
++			} else {
++				cfg_en.ptrtgt = NULL;
++			}
++
+ 			cfg_en.value = parse_value(&amp;line, lnr, &amp;start, cfg_en.is_signed,
+ 				cfg_en.is_float, &amp;cfg_en.dynval, &amp;cfg_en.check);
+ 			if (cfg_en.dynval == DYN_VAL_ADDR)
+ 				cfg_en.val_addr = (void *) cfg_en.value;
+-			if (in_dynmem) {
++			if (in_dynmem)
+ 				cfg_en.dynmem = dynmem_enp;
+-			} else {
++			else
+ 				cfg_en.dynmem = NULL;
+-			}
+ 
+ 			cfg-&gt;push_back(cfg_en);
+ 
+-			if (cfg-&gt;back().dynval == DYN_VAL_WATCH) {
+-				cfg_act-&gt;push_back(&amp;cfg-&gt;back());
++			if (in_ptrmem) {
++				cfg-&gt;back().ptrmem = ptrmem_enp;
++				cfg-&gt;back().ptrmem-&gt;cfg.push_back(&amp;cfg-&gt;back());
++				used_cfg_act = &amp;cfg-&gt;back().ptrmem-&gt;cfg_act;
++			} else {
++				cfg-&gt;back().ptrmem = NULL;
++				used_cfg_act = cfg_act;
++			}
++
++			if (cfg-&gt;back().dynval == DYN_VAL_WATCH ||
++			    cfg-&gt;back().ptrtgt) {
++				used_cfg_act-&gt;push_back(&amp;cfg-&gt;back());
+ 				break;
+ 			}
+ 
+@@ -499,10 +577,10 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			if (start &gt; line.length()) {
+ 				cfg_parse_err(&amp;line, lnr, --start);
+ 			} else if (line.at(start) == 'a') {
+-				cfg_act-&gt;push_back(&amp;cfg-&gt;back());
++				used_cfg_act-&gt;push_back(&amp;cfg-&gt;back());
+ 			} else if (line.at(start) == 'w') {
+ 				cfg-&gt;back().dynval = DYN_VAL_WATCH;
+-				cfg_act-&gt;push_back(&amp;cfg-&gt;back());
++				used_cfg_act-&gt;push_back(&amp;cfg-&gt;back());
+ 			}
+ 			break;
+ 		}
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index b58c12e..0476755 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -169,6 +169,44 @@ static void output_config (list&lt;CfgEntry&gt; *cfg)
+ 	}
+ }
+ 
++static void dump_ptr_mem (pid_t pid, u32 obj_id, u32 ptr_id,
++			  void *mem_addr, size_t size)
++{
++	i32 fd;
++	string fname;
++	char buf[size];
++	ssize_t wbytes;
++
++	if (memattach(pid) != 0)
++		goto err;
++	if (memread(pid, mem_addr, buf, sizeof(buf)) != 0)
++		goto err_detach;
++	memdetach(pid);
++
++	fname += &quot;p&quot;;
++	fname += to_string(ptr_id);
++	fname += &quot;_&quot;;
++	if (obj_id &lt; 100)
++		fname += &quot;0&quot;;
++	if (obj_id &lt; 10)
++		fname += &quot;0&quot;;
++	fname += to_string(obj_id);
++	fname += &quot;.dump&quot;;
++
++	fd = open(fname.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0644);
++	if (fd &lt; 0)
++		goto err;
++	wbytes = write(fd, buf, sizeof(buf));
++	if (wbytes &lt; (ssize_t) sizeof(buf))
++		cerr &lt;&lt; fname &lt;&lt; &quot;: Write error!&quot; &lt;&lt; endl;
++	close(fd);
++	return;
++err_detach:
++	memdetach(pid);
++err:
++	return;
++}
++
+ static void dump_mem_obj (pid_t pid, u32 class_id, u32 obj_id,
+ 			  void *mem_addr, size_t size)
+ {
+@@ -225,7 +263,7 @@ static void inc_dec_mvec_pridx (list&lt;CfgEntry&gt; *cfg, bool do_inc)
+ static void dump_all_mem_obj (pid_t pid, list&lt;CfgEntry&gt; *cfg)
+ {
+ 	DynMemEntry *old_dynmem = NULL;
+-	u32 class_id = 0, obj_id = 0, i;
++	u32 class_id = 0, obj_id = 0, ptr_id = 0, i;
+ 	list&lt;CfgEntry&gt;::iterator it;
+ 
+ 	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
+@@ -244,28 +282,48 @@ static void dump_all_mem_obj (pid_t pid, list&lt;CfgEntry&gt; *cfg)
+ 			old_dynmem = it-&gt;dynmem;
+ 		}
+ 	}
++
++	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
++		if (it-&gt;dynmem &amp;&amp; it-&gt;ptrtgt) {
++			obj_id = 0;
++			for (i = 0; i &lt; it-&gt;dynmem-&gt;v_maddr.size(); i++) {
++				if ((u64)it-&gt;v_oldval[obj_id] &gt; 0 &amp;&amp;
++				    it-&gt;ptrtgt-&gt;v_state[obj_id] &gt;= PTR_SETTLED)
++					dump_ptr_mem(pid, obj_id, ptr_id,
++						     (void *) it-&gt;v_oldval[obj_id],
++						     it-&gt;ptrtgt-&gt;mem_size);
++				obj_id++;
++			}
++			ptr_id++;
++		}
++	}
+ }
+ 
+-static void toggle_cfg (list&lt;CfgEntry*&gt; *cfg, list&lt;CfgEntry*&gt; *cfg_act)
++static void toggle_cfg (list&lt;CfgEntry*&gt; *key_cfg, list&lt;CfgEntry*&gt; *cfg_act)
+ {
+ 	bool found;
+ 	CfgEntry *cfg_en;
++	list&lt;CfgEntry*&gt; *used_cfg_act = NULL;
+ 
+ 	list&lt;CfgEntry*&gt;::iterator it, it_act;
+-	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
++	for (it = key_cfg-&gt;begin(); it != key_cfg-&gt;end(); it++) {
++		cfg_en = *it;
++		if (cfg_en-&gt;ptrmem)
++			used_cfg_act = &amp;cfg_en-&gt;ptrmem-&gt;cfg_act;
++		else
++			used_cfg_act = cfg_act;
+ 		found = false;
+-		for (it_act = cfg_act-&gt;begin(); it_act != cfg_act-&gt;end(); it_act++) {
+-			if (*it == *it_act) {
+-				cfg_act-&gt;erase(it_act);
+-				found = true;
++		for (it_act = used_cfg_act-&gt;begin(); it_act != used_cfg_act-&gt;end(); it_act++) {
++			if (cfg_en == *it_act) {
++				used_cfg_act-&gt;erase(it_act);
+ 				cfg_en = *it_act;
+ 				cout &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot; OFF&quot; &lt;&lt; endl;
++				found = true;
+ 				break;
+ 			}
+ 		}
+ 		if (!found) {
+-			cfg_act-&gt;push_back(*it);
+-			cfg_en = *it;
++			used_cfg_act-&gt;push_back(cfg_en);
+ 			cout &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot; ON&quot; &lt;&lt; endl;
+ 		}
+ 	}
+@@ -273,18 +331,30 @@ static void toggle_cfg (list&lt;CfgEntry*&gt; *cfg, list&lt;CfgEntry*&gt; *cfg_act)
+ 
+ static void output_mem_val (CfgEntry *cfg_en, void *mem_offs, bool is_dynmem)
+ {
++	DynMemEntry *dynmem;
+ 	double tmp_dval;
+ 	float  tmp_fval;
+ 	i32 hexfloat;
+ 
+-	if (is_dynmem &amp;&amp; cfg_en-&gt;dynmem-&gt;v_maddr.size() &gt; 1)
++	if (cfg_en-&gt;ptrmem) {
++		dynmem = cfg_en-&gt;ptrmem-&gt;dynmem;
++		if (dynmem &amp;&amp; dynmem-&gt;v_maddr.size() &gt; 1)
++			cout &lt;&lt; &quot; -&gt; &quot; &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot;[&quot; &lt;&lt; dynmem-&gt;pr_idx &lt;&lt; &quot;]&quot;
++			     &lt;&lt; &quot; at &quot; &lt;&lt; hex &lt;&lt; PTR_ADD(void *, cfg_en-&gt;addr, mem_offs)
++			     &lt;&lt; &quot;, Data: 0x&quot;;
++		else
++			cout &lt;&lt; &quot; -&gt; &quot; &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot; at &quot; &lt;&lt; hex
++			     &lt;&lt; PTR_ADD(void *, cfg_en-&gt;addr, mem_offs)
++			     &lt;&lt; &quot;, Data: 0x&quot;;
++	} else if (is_dynmem &amp;&amp; cfg_en-&gt;dynmem-&gt;v_maddr.size() &gt; 1) {
+ 		cout &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot;[&quot; &lt;&lt; cfg_en-&gt;dynmem-&gt;pr_idx &lt;&lt; &quot;]&quot;
+ 		     &lt;&lt; &quot; at &quot; &lt;&lt; hex &lt;&lt; PTR_ADD(void *, cfg_en-&gt;addr, mem_offs)
+ 		     &lt;&lt; &quot;, Data: 0x&quot;;
+-	else
++	} else {
+ 		cout &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot; at &quot; &lt;&lt; hex
+ 		     &lt;&lt; PTR_ADD(void *, cfg_en-&gt;addr, mem_offs)
+ 		     &lt;&lt; &quot;, Data: 0x&quot;;
++	}
+ 
+ 	if (cfg_en-&gt;is_float) {
+ 		memcpy(&amp;tmp_dval, &amp;cfg_en-&gt;old_val, sizeof(i64));
+@@ -496,6 +566,71 @@ static void change_memory (pid_t pid, CfgEntry *cfg_en, u8 *buf,
+ 	}
+ }
+ 
++static void output_ptrmem (CfgEntry *cfg_en)
++{
++	DynMemEntry *dynmem = cfg_en-&gt;ptrtgt-&gt;dynmem;
++	void *mem_offs;
++	list&lt;CfgEntry*&gt; *cfg_act = &amp;cfg_en-&gt;ptrtgt-&gt;cfg_act;
++	list&lt;CfgEntry*&gt;::iterator it;
++
++	mem_offs = cfg_en-&gt;ptrtgt-&gt;v_offs[dynmem-&gt;pr_idx];
++	cout &lt;&lt; &quot; -&gt; *&quot; &lt;&lt; cfg_en-&gt;ptrtgt-&gt;name &lt;&lt; &quot;[&quot;
++	     &lt;&lt; dynmem-&gt;pr_idx &lt;&lt; &quot;]&quot;
++	     &lt;&lt; &quot; = &quot; &lt;&lt; hex &lt;&lt; mem_offs &lt;&lt; dec &lt;&lt; endl;
++
++	for (it = cfg_act-&gt;begin(); it != cfg_act-&gt;end(); it++) {
++		cfg_en = *it;
++		cfg_en-&gt;old_val = cfg_en-&gt;v_oldval[dynmem-&gt;pr_idx];
++		output_mem_val(cfg_en, mem_offs, false);
++	}
++}
++
++static void process_ptrmem (pid_t pid, CfgEntry *cfg_en, u8 *buf, u32 mem_idx)
++{
++	void *mem_addr;
++	list&lt;CfgEntry*&gt; *cfg_act = &amp;cfg_en-&gt;ptrtgt-&gt;cfg_act;
++	list&lt;CfgEntry*&gt;::iterator it;
++
++	if (*(void **) buf == NULL || cfg_en-&gt;ptrtgt-&gt;v_state[mem_idx] == PTR_DONE)
++		return;
++
++	if (*(void **) buf == (void *) cfg_en-&gt;v_oldval[mem_idx]) {
++		if (cfg_en-&gt;dynval == DYN_VAL_PTR_ONCE)
++			cfg_en-&gt;ptrtgt-&gt;v_state[mem_idx] = PTR_DONE;
++		else
++			cfg_en-&gt;ptrtgt-&gt;v_state[mem_idx] = PTR_SETTLED;
++		cfg_en-&gt;ptrtgt-&gt;v_offs[mem_idx] = *(void **) buf;
++		for (it = cfg_act-&gt;begin(); it != cfg_act-&gt;end(); it++) {
++			cfg_en = *it;
++			mem_addr = PTR_ADD(void *, cfg_en-&gt;ptrmem-&gt;v_offs[mem_idx], cfg_en-&gt;addr);
++			if (memread(pid, mem_addr, buf, sizeof(i64)) != 0) {
++				cerr &lt;&lt; &quot;PTRACE READ MEMORY ERROR PID[&quot;
++				     &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
++				exit(-1);
++			}
++			change_memory(pid, cfg_en, buf, cfg_en-&gt;ptrmem-&gt;v_offs[mem_idx],
++				      &amp;cfg_en-&gt;v_oldval[mem_idx]);
++		}
++	} else {
++		memcpy(&amp;cfg_en-&gt;v_oldval[mem_idx],
++		       buf, sizeof(void *));
++	}
++}
++
++static void allocate_ptrmem (CfgEntry *cfg_en)
++{
++	list&lt;CfgEntry*&gt; *cfg = &amp;cfg_en-&gt;ptrtgt-&gt;cfg;
++	list&lt;CfgEntry*&gt;::iterator it;
++
++	cfg_en-&gt;ptrtgt-&gt;v_state.push_back(PTR_INIT);
++	cfg_en-&gt;ptrtgt-&gt;v_offs.push_back(0);
++
++	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
++		cfg_en = *it;
++		cfg_en-&gt;v_oldval.push_back(0);
++	}
++}
++
+ /*
+  * The function run_pgrp_bg() is so hacky OS security
+  * bypassing so that it is not possible to wait for the
+@@ -1246,8 +1381,11 @@ prepare_dynmem:
+ 				for (mem_idx = 0;
+ 				     mem_idx &lt; cfg_en-&gt;dynmem-&gt;v_maddr.size();
+ 				     mem_idx++) {
+-					if (mem_idx &gt;= cfg_en-&gt;v_oldval.size())
++					if (mem_idx &gt;= cfg_en-&gt;v_oldval.size()) {
+ 						cfg_en-&gt;v_oldval.push_back(0);
++						if (cfg_en-&gt;ptrtgt)
++							allocate_ptrmem(cfg_en);
++					}
+ 				}
+ 			}
+ 		}
+@@ -1277,8 +1415,11 @@ prepare_dynmem:
+ 						     &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
+ 						return -1;
+ 					}
+-					change_memory(pid, cfg_en, buf, mem_offs,
+-						&amp;cfg_en-&gt;v_oldval[mem_idx]);
++					if (cfg_en-&gt;ptrtgt)
++						process_ptrmem(pid, cfg_en, buf, mem_idx);
++					else
++						change_memory(pid, cfg_en, buf, mem_offs,
++							&amp;cfg_en-&gt;v_oldval[mem_idx]);
+ 				}
+ 			} else {
+ 				mem_offs = NULL;
+@@ -1366,6 +1507,8 @@ prepare_dynmem:
+ 				mem_offs = NULL;
+ 			}
+ 			output_mem_val(cfg_en, mem_offs, is_dynmem);
++			if (cfg_en-&gt;ptrtgt)
++				output_ptrmem(cfg_en);
+ 		}
+ 
+ 	}
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000061.html">[Ugtrain-devel] [PATCH 0/3] ugtrain: complete Warzone 2100 cheating
+</A></li>
+	<LI>Next message: <A HREF="000063.html">[Ugtrain-devel] [PATCH 2/3] ugtrain: introduce check from reference
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#62">[ date ]</a>
+              <a href="thread.html#62">[ thread ]</a>
+              <a href="subject.html#62">[ subject ]</a>
+              <a href="author.html#62">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,115 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 2/3] autotools: don't compile linuxhooking	on non-linux
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-August/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%202/3%5D%20autotools%3A%20don%27t%20compile%20linuxhooking%0A%09on%20non-linux&In-Reply-To=%3C1377759087-7288-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000001.html">
+   <LINK REL="Next"  HREF="000003.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 2/3] autotools: don't compile linuxhooking	on non-linux</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%202/3%5D%20autotools%3A%20don%27t%20compile%20linuxhooking%0A%09on%20non-linux&In-Reply-To=%3C1377759087-7288-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 2/3] autotools: don't compile linuxhooking	on non-linux">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Thu Aug 29 08:51:27 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000001.html">[Ugtrain-devel] [PATCH 1/3] README: update dynamic memory features	and general info
+</A></li>
+        <LI>Next message: <A HREF="000003.html">[Ugtrain-devel] [PATCH 3/3] ugtrain: prepare Windows support
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#2">[ date ]</a>
+              <a href="thread.html#2">[ thread ]</a>
+              <a href="subject.html#2">[ subject ]</a>
+              <a href="author.html#2">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>---
+ configure.in             | 15 +++++++++------
+ linuxhooking/Makefile.am |  4 ++++
+ 2 files changed, 13 insertions(+), 6 deletions(-)
+
+diff --git a/configure.in b/configure.in
+index 46677b8..504f2a6 100644
+--- a/configure.in
++++ b/configure.in
+@@ -49,6 +49,7 @@ case $host in
+     CC=&quot;$TMP_CC&quot;
+     ;;
+ esac
++AM_CONDITIONAL([LINUX], test &quot;x$host_os_linux&quot; = &quot;xyes&quot;)
+ 
+ # Checks for pkg-config.
+ AC_SUBST(DEPS_CFLAGS)
+@@ -67,9 +68,11 @@ AC_TYPE_UID_T
+ AC_FUNC_STAT
+ AC_CHECK_FUNCS(ptrace memcpy memcmp getenv setenv)
+ 
+-AC_OUTPUT(
+-Makefile
+-linuxhooking/Makefile
+-tools/Makefile
+-src/Makefile
+-)
++AC_CHECK_HEADER(windows.h)
++
++AC_CONFIG_FILES([
++	Makefile
++	linuxhooking/Makefile
++	tools/Makefile
++	src/Makefile])
++AC_OUTPUT
+diff --git a/linuxhooking/Makefile.am b/linuxhooking/Makefile.am
+index fe1124d..a700db1 100644
+--- a/linuxhooking/Makefile.am
++++ b/linuxhooking/Makefile.am
+@@ -1,3 +1,5 @@
++if LINUX
++
+ lib_LTLIBRARIES = libmemdisc32.la libmemhack32.la \
+                   libmemdisc64.la libmemhack64.la
+ 
+@@ -31,3 +33,5 @@ ugpreload_SOURCES = ugpreload.c
+ ugpreload_LDADD = $(DEPS_LIBS)
+ 
+ AM_CFLAGS = -Wall
++
++endif
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000001.html">[Ugtrain-devel] [PATCH 1/3] README: update dynamic memory features	and general info
+</A></li>
+	<LI>Next message: <A HREF="000003.html">[Ugtrain-devel] [PATCH 3/3] ugtrain: prepare Windows support
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#2">[ date ]</a>
+              <a href="thread.html#2">[ thread ]</a>
+              <a href="subject.html#2">[ subject ]</a>
+              <a href="author.html#2">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

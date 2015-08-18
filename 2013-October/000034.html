@@ -1,0 +1,263 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] libmemdisc/hack: use frame pointer,	not stack pointer
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-October/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20libmemdisc/hack%3A%20use%20frame%20pointer%2C%0A%09not%20stack%20pointer&In-Reply-To=%3C1381822965-5030-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000033.html">
+   <LINK REL="Next"  HREF="000035.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] libmemdisc/hack: use frame pointer,	not stack pointer</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20libmemdisc/hack%3A%20use%20frame%20pointer%2C%0A%09not%20stack%20pointer&In-Reply-To=%3C1381822965-5030-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] libmemdisc/hack: use frame pointer,	not stack pointer">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Tue Oct 15 09:42:45 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000033.html">[Ugtrain-devel] [PATCH] adaption: add GNU backtrace support
+</A></li>
+        <LI>Next message: <A HREF="000035.html">[Ugtrain-devel] [PATCH] linuxhooking,	ugtrain: switch over to reverse stack offset
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#34">[ date ]</a>
+              <a href="thread.html#34">[ thread ]</a>
+              <a href="subject.html#34">[ subject ]</a>
+              <a href="author.html#34">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>We don't want to search in our own stack usage for code pointers.
+This is why we need to get the start of our current stack frame.
+&gt;<i>From the GNU backtrace() source we know that this is possible with
+</I>'__builtin_frame_address (0)' in an arch independent manner. Now,
+we don't have any arch specific stuff in the C/C++ code anymore.
+---
+ README                    |    5 +++--
+ linuxhooking/libmemdisc.c |   34 +++++++++++++++++++++-------------
+ linuxhooking/libmemhack.c |   15 +++++++++------
+ 3 files changed, 33 insertions(+), 21 deletions(-)
+
+diff --git a/README b/README
+index a662569..044652c 100644
+--- a/README
++++ b/README
+@@ -21,7 +21,7 @@
+ #
+ # ### Current Limitations ###
+ #
+-# CPU Architecture:	x86 and x86_64 only
++# CPU Architecture:	tested with x86 and x86_64 only
+ #
+ # Operating System:	Linux-only
+ #
+@@ -29,7 +29,8 @@
+ #			doesn't work for WINE, yet
+ #
+ # Compilation:		dyn. mem. support can't be deactivated,
+-#			requires multilib support (32+64 bit) for dyn. mem.
++#			requires multilib support on 64 bit arch for dyn. mem.
++#			32-bit and x86_64 only
+ #
+ # GUI:			can't serve as a backend, yet
+ #
+diff --git a/linuxhooking/libmemdisc.c b/linuxhooking/libmemdisc.c
+index e98e599..c15c52e 100644
+--- a/linuxhooking/libmemdisc.c
++++ b/linuxhooking/libmemdisc.c
+@@ -46,11 +46,13 @@
+ 	#define printf(...) do { } while (0);
+ #endif
+ 
+-/* get the stack pointer (x86 only) */
+-#ifdef __i386__
+-	register void *reg_sp __asm__ (&quot;esp&quot;);
+-#else
+-	register void *reg_sp __asm__ (&quot;rsp&quot;);
++/*
++ * Ask gcc for the current stack frame pointer.
++ * We don't use the stack pointer as we are not interested in the
++ * stuff we have ourselves on the stack and for arch independence.
++ */
++#ifndef FIRST_FRAME_POINTER
++	# define FIRST_FRAME_POINTER  __builtin_frame_address (0)
+ #endif
+ 
+ 
+@@ -88,7 +90,7 @@ static void *code_addr = NULL;
+  *
+  * So use it if explicitly requested only.
+  * If not, we proceed with reverse searching for code
+- * addresses on the stack without respecting any stack frames.
++ * addresses on the stack without respecting further stack frames.
+  */
+ static bool use_gbt = false;
+ 
+@@ -248,12 +250,8 @@ void __attribute ((constructor)) memdisc_init (void)
+ 	 *	for the Droid class: Mission start, loading from savegame and
+ 	 *	building them.
+ 	 *
+-	 *	Here we have improvement potential. The reverse stack offset
++	 *	Here we have improvement potential: The reverse stack offset
+ 	 *	would be unique for all calls of malloc for a memory class.
+-	 *	But the difficulty is to determine our own stack usage in
+-	 *	libmemdisc and libmemhack so that we don't use the stack
+-	 *	pointer register directly for the offset. We have to subtract
+-	 *	our own stack usage from it to make it work.
+ 	 */
+ 	case '4':
+ 	case '5':
+@@ -285,28 +283,32 @@ parse_err:
+ 	return;
+ }
+ 
+-#if 0
++#if DEBUG &amp;&amp; 0
+ /* debugging for stack backtracing */
+-static void dump_stack_raw (void)
++static void dump_stack_raw (void *ffp)
+ {
+ 	void *offs;
+ 	i32 col = 0;
+ 	i32 byte;
+ 
+-	printf(&quot;reg_sp: %p\n\n&quot;, reg_sp);
+-	for (offs = reg_sp; offs &lt; __libc_stack_end; offs++) {
++	printf(&quot;\n&quot;);
++	for (offs = ffp; offs &lt; __libc_stack_end; offs++) {
+ 		if (col &gt;= 16) {
+ 			printf(&quot;\n&quot;);
+ 			col = 0;
+ 		} else if (col == 8) {
+ 			printf(&quot; &quot;);
+ 		}
++		if (col == 0)
++			printf(&quot;%p: &quot;, offs);
+ 		byte = *(char *) offs;
+ 		printf(&quot; %02x&quot;, byte &amp; 0xFF);
+ 		col++;
+ 	}
+ 	printf(&quot;\n\n&quot;);
+ }
++#else
++static void dump_stack_raw (void* ffp) {}
+ #endif
+ 
+ /*
+@@ -314,16 +316,16 @@ static void dump_stack_raw (void)
+  * stack frames in contrast to GNU backtrace. If GNU backtrace hits NULL
+  * pointers while determining the stack frames, then it crashes with SIGSEGV.
+  *
+- * We expect the stack pointer to be (32/64 bit) memory aligned here.
++ * We expect the first frame pointer to be (32/64 bit) memory aligned here.
+  */
+-static bool find_code_pointers (char *obuf, i32 obuf_offs)
++static bool find_code_pointers (void *ffp, char *obuf, i32 obuf_offs)
+ {
+ 	void *offs, *code_ptr;
+ 	i32 i = 0;
+ 	bool found = false;
+ 
+-	printf(PFX &quot;reg_sp: %p\n&quot;, reg_sp);
+-	for (offs = reg_sp;
++	printf(PFX &quot;ffp: %p\n&quot;, ffp);
++	for (offs = ffp;
+ 	     offs &lt;= __libc_stack_end - sizeof(void *);
+ 	     offs += sizeof(void *)) {
+ 		code_ptr = (void *) *(ptr_t *) offs;
+@@ -377,6 +379,7 @@ static bool run_gnu_backtrace (char *obuf, i32 obuf_offs)
+ #ifdef OW_MALLOC
+ void *malloc (size_t size)
+ {
++	void *ffp = FIRST_FRAME_POINTER;
+ 	void *mem_addr;
+ 	i32 wbytes;
+ 	char obuf[BUF_SIZE];
+@@ -396,10 +399,11 @@ void *malloc (size_t size)
+ 		obuf_offs = sprintf(obuf, &quot;m%p;s%zd&quot;, mem_addr, size);
+ 
+ 		if (stage &gt;= 3) {
++			dump_stack_raw(ffp);  /* debugging only */
+ 			if (use_gbt)
+ 				found = run_gnu_backtrace(obuf, obuf_offs);
+ 			else
+-				found = find_code_pointers(obuf, obuf_offs);
++				found = find_code_pointers(ffp, obuf, obuf_offs);
+ 			if (!found)
+ 				goto out;
+ 		}
+diff --git a/linuxhooking/libmemhack.c b/linuxhooking/libmemhack.c
+index 4e0048a..293e558 100644
+--- a/linuxhooking/libmemhack.c
++++ b/linuxhooking/libmemhack.c
+@@ -48,11 +48,13 @@
+ 	#define printf(...) do { } while (0);
+ #endif
+ 
+-/* get the stack pointer (x86 only) */
+-#ifdef __i386__
+-	register void *reg_sp __asm__ (&quot;esp&quot;);
+-#else
+-	register void *reg_sp __asm__ (&quot;rsp&quot;);
++/*
++ * Ask gcc for the current stack frame pointer.
++ * We don't use the stack pointer as we are not interested in the
++ * stuff we have ourselves on the stack and for arch independence.
++ */
++#ifndef FIRST_FRAME_POINTER
++	# define FIRST_FRAME_POINTER  __builtin_frame_address (0)
+ #endif
+ 
+ /*
+@@ -252,6 +254,7 @@ err:
+ #ifdef OW_MALLOC
+ void *malloc (size_t size)
+ {
++	void *ffp = FIRST_FRAME_POINTER;
+ 	void *mem_addr, *stack_addr;
+ 	i32 i, j, wbytes, num_taddr = 0;
+ 	void *trace[MAX_GNUBT] = { NULL };
+@@ -284,7 +287,7 @@ void *malloc (size_t size)
+ 				stack_addr = PTR_SUB(void *, __libc_stack_end,
+ 					config[i]-&gt;stack_offs[j]);
+ 
+-				if (reg_sp &gt; stack_addr ||
++				if (ffp &gt;= stack_addr ||
+ 				    *(ptr_t *)stack_addr !=
+ 				    (ptr_t) config[i]-&gt;code_addr)
+ 					continue;
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000033.html">[Ugtrain-devel] [PATCH] adaption: add GNU backtrace support
+</A></li>
+	<LI>Next message: <A HREF="000035.html">[Ugtrain-devel] [PATCH] linuxhooking,	ugtrain: switch over to reverse stack offset
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#34">[ date ]</a>
+              <a href="thread.html#34">[ thread ]</a>
+              <a href="subject.html#34">[ subject ]</a>
+              <a href="author.html#34">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

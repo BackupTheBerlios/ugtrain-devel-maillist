@@ -1,0 +1,86 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 2/4] libmemhack: fix max_obj calculation
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-September/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%202/4%5D%20libmemhack%3A%20fix%20max_obj%20calculation&In-Reply-To=%3C1378078648-4155-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000006.html">
+   <LINK REL="Next"  HREF="000009.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 2/4] libmemhack: fix max_obj calculation</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%202/4%5D%20libmemhack%3A%20fix%20max_obj%20calculation&In-Reply-To=%3C1378078648-4155-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 2/4] libmemhack: fix max_obj calculation">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Mon Sep  2 01:37:28 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000006.html">[Ugtrain-devel] [PATCH 1/4] autotools: don't require multilib	support on 32-bit systems
+</A></li>
+        <LI>Next message: <A HREF="000009.html">[Ugtrain-devel] [PATCH 3/4] examples: add warzone2100 32-bit	adaption
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#7">[ date ]</a>
+              <a href="thread.html#7">[ thread ]</a>
+              <a href="subject.html#7">[ subject ]</a>
+              <a href="author.html#7">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>With more than one memory class configured, the maximum number of
+objects per class is calculated too high and the trainer will exit.
+
+So also divide by the number of memory classes to correct this.
+---
+ linuxhooking/libmemhack.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/linuxhooking/libmemhack.c b/linuxhooking/libmemhack.c
+index 66c18e4..efef5d9 100644
+--- a/linuxhooking/libmemhack.c
++++ b/linuxhooking/libmemhack.c
+@@ -134,7 +134,7 @@ void __attribute ((constructor)) memhack_init (void)
+ 	SET_IBUF_OFFS(1, j);
+ 	cfg_offs = (num_cfg + 1) * sizeof(cfg_s *);
+ 	max_obj = sizeof(config) - cfg_offs - num_cfg * sizeof(cfg_s);
+-	max_obj /= sizeof(void *);
++	max_obj /= sizeof(void *) * num_cfg;
+ 	if (max_obj &lt;= 1)
+ 		fprintf(stderr, PFX &quot;Error: No space for memory addresses!\n&quot;);
+ 	else
+-- 
+1.8.1.5
+
+</PRE>
+
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000006.html">[Ugtrain-devel] [PATCH 1/4] autotools: don't require multilib	support on 32-bit systems
+</A></li>
+	<LI>Next message: <A HREF="000009.html">[Ugtrain-devel] [PATCH 3/4] examples: add warzone2100 32-bit	adaption
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#7">[ date ]</a>
+              <a href="thread.html#7">[ thread ]</a>
+              <a href="subject.html#7">[ subject ]</a>
+              <a href="author.html#7">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

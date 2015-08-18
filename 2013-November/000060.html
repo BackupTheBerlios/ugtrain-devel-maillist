@@ -1,0 +1,339 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain: enhance checks, improve cfg output
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-November/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20enhance%20checks%2C%20improve%20cfg%20output&In-Reply-To=%3C1385159093-29791-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000059.html">
+   <LINK REL="Next"  HREF="000061.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain: enhance checks, improve cfg output</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20enhance%20checks%2C%20improve%20cfg%20output&In-Reply-To=%3C1385159093-29791-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain: enhance checks, improve cfg output">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Fri Nov 22 23:24:53 CET 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000059.html">[Ugtrain-devel] [PATCH] cfgentry: rework names, order, types,	comments
+</A></li>
+        <LI>Next message: <A HREF="000061.html">[Ugtrain-devel] [PATCH 0/3] ugtrain: complete Warzone 2100 cheating
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#60">[ date ]</a>
+              <a href="thread.html#60">[ thread ]</a>
+              <a href="subject.html#60">[ subject ]</a>
+              <a href="author.html#60">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>We introduce CHECK_EQ (==, 'e') and use the chance to rework the
+check processing. If a &quot;check&quot; entry has no 'g', 'l' or 'e', then
+parsing should already fail. We can detect that, now. So use it.
+
+Also the config output is very difficult to read, especially with
+a lot of checks and classes. So introduce some newlines and spaces
+for indention.
+---
+ src/cfgentry.h    |    9 ++--
+ src/cfgparser.cpp |   15 ++++---
+ src/ugtrain.cpp   |  118 ++++++++++++++++++++++++++++++++++-------------------
+ 3 files changed, 91 insertions(+), 51 deletions(-)
+
+diff --git a/src/cfgentry.h b/src/cfgentry.h
+index 8891fc0..2d2019b 100644
+--- a/src/cfgentry.h
++++ b/src/cfgentry.h
+@@ -44,7 +44,7 @@ public:
+ 
+ 
+ typedef enum {
+-	DYN_VAL_NONE,
++	DYN_VAL_OFF,
+ 	DYN_VAL_MIN,
+ 	DYN_VAL_MAX,
+ 	DYN_VAL_ADDR,
+@@ -52,9 +52,10 @@ typedef enum {
+ } dynval_e;
+ 
+ typedef enum {
+-	DO_UNCHECKED,
+-	DO_LT,
+-	DO_GT
++	CHECK_OFF,
++	CHECK_LT,
++	CHECK_GT,
++	CHECK_EQ
+ } check_e;
+ 
+ class CheckEntry {
+diff --git a/src/cfgparser.cpp b/src/cfgparser.cpp
+index 2df557d..72f5e30 100644
+--- a/src/cfgparser.cpp
++++ b/src/cfgparser.cpp
+@@ -202,7 +202,7 @@ static i32 parse_data_type (string *line, u32 lnr, u32 *start,
+ 
+ /*
+  * This function parses a signed/unsigned integer or a float/double value
+- * from the config and also determines if a greater/less than check is wanted.
++ * from the config and also determines if a check is wanted.
+  *
+  * Attention: Hacky floats. A float has 4 bytes, a double has 8 bytes
+  *            and i64 has 8 bytes. Why not copy the float/double into the i64?!
+@@ -225,13 +225,18 @@ static i64 parse_value (string *line, u32 lnr, u32 *start, bool is_signed,
+ 	if (lidx + 2 &gt; line-&gt;length())
+ 		cfg_parse_err(line, lnr, --lidx);
+ 	if (line-&gt;at(lidx) == 'l' &amp;&amp; line-&gt;at(lidx + 1) == ' ') {
+-		*check = DO_LT;
++		*check = CHECK_LT;
+ 		*start += 2;
+ 	} else if (line-&gt;at(lidx) == 'g' &amp;&amp; line-&gt;at(lidx + 1) == ' ') {
+-		*check = DO_GT;
++		*check = CHECK_GT;
++		*start += 2;
++	} else if (line-&gt;at(lidx) == 'e' &amp;&amp; line-&gt;at(lidx + 1) == ' ') {
++		*check = CHECK_EQ;
+ 		*start += 2;
+ 	} else {
+-		*check = DO_UNCHECKED;
++		if (!dynval)    // This must be a check entry.
++			cfg_parse_err(line, lnr, --lidx);
++		*check = CHECK_OFF;
+ 	}
+ 
+ skip_check:
+@@ -467,7 +472,7 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 
+ 		default:
+ 			cfg_en.checks = NULL;
+-			cfg_en.dynval = DYN_VAL_NONE;
++			cfg_en.dynval = DYN_VAL_OFF;
+ 			cfg_en.addr = parse_address(&amp;line, lnr, &amp;start);
+ 			cfg_en.size = parse_data_type(&amp;line, lnr, &amp;start,
+ 				&amp;cfg_en.is_signed, &amp;cfg_en.is_float);
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index 6d8f7d2..b58c12e 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -64,8 +64,8 @@ void output_configp (list&lt;CfgEntry*&gt; *cfg)
+ 	list&lt;CfgEntry*&gt;::iterator it;
+ 	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
+ 		cfg_en = *it;
+-		cout &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot; &quot; &lt;&lt; hex &lt;&lt; cfg_en-&gt;addr &lt;&lt; dec
+-			&lt;&lt; &quot; &quot; &lt;&lt; cfg_en-&gt;size &lt;&lt; &quot; &quot;;
++		cout &lt;&lt; &quot;  &quot;  &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot; &quot; &lt;&lt; hex &lt;&lt; cfg_en-&gt;addr
++		     &lt;&lt; dec &lt;&lt; &quot; &quot; &lt;&lt; cfg_en-&gt;size &lt;&lt; &quot;-bit &quot;;
+ 		if (cfg_en-&gt;is_float) {
+ 			memcpy(&amp;tmp_dval, &amp;cfg_en-&gt;value, sizeof(i64));
+ 			cout &lt;&lt; tmp_dval &lt;&lt; endl;
+@@ -75,44 +75,63 @@ void output_configp (list&lt;CfgEntry*&gt; *cfg)
+ 	}
+ }
+ 
++static char *get_objcheck_str (CheckEntry *chk_en)
++{
++	return (char *) ((chk_en-&gt;is_objcheck) ?&quot; (objcheck)&quot; : &quot;&quot;);
++}
++
++static char *get_check_op (check_e check)
++{
++	char *check_op;
++
++	switch (check) {
++	case CHECK_LT:
++		check_op = (char *) &quot; &lt; &quot;;
++		break;
++	case CHECK_GT:
++		check_op = (char *) &quot; &gt; &quot;;
++		break;
++	case CHECK_EQ:
++		check_op = (char *) &quot; == &quot;;
++		break;
++	default:
++		check_op = NULL;
++		break;
++	}
++	return check_op;
++}
++
+ static void output_checks (CfgEntry *cfg_en)
+ {
+-	list&lt;CheckEntry&gt; *chk_lp;
++	list&lt;CheckEntry&gt; *chk_lp = cfg_en-&gt;checks;
++	list&lt;CheckEntry&gt;::iterator it;
+ 	double tmp_dval;
++	char *check_op = get_check_op(cfg_en-&gt;check);
+ 
+-	if (cfg_en-&gt;check &gt; DO_UNCHECKED) {
+-		cout &lt;&lt; &quot;check &quot; &lt;&lt; hex &lt;&lt; cfg_en-&gt;addr &lt;&lt; dec;
+-		if (cfg_en-&gt;check == DO_LT)
+-			cout &lt;&lt; &quot; &lt;&quot;;
+-		else if (cfg_en-&gt;check == DO_GT)
+-			cout &lt;&lt; &quot; &gt;&quot;;
+-	}
+-	if (cfg_en-&gt;is_float) {
+-		memcpy(&amp;tmp_dval, &amp;cfg_en-&gt;value, sizeof(i64));
+-		cout &lt;&lt; &quot; &quot; &lt;&lt; tmp_dval &lt;&lt; endl;
+-	} else {
+-		cout &lt;&lt; &quot; &quot; &lt;&lt; cfg_en-&gt;value &lt;&lt; endl;
+-	}
++	if (check_op) {
++		cout &lt;&lt; &quot;    check &quot; &lt;&lt; hex &lt;&lt; cfg_en-&gt;addr &lt;&lt; dec &lt;&lt; check_op;
+ 
+-	if (!cfg_en-&gt;checks)
++		if (cfg_en-&gt;is_float) {
++			memcpy(&amp;tmp_dval, &amp;cfg_en-&gt;value, sizeof(i64));
++			cout &lt;&lt; tmp_dval &lt;&lt; endl;
++		} else {
++			cout &lt;&lt; cfg_en-&gt;value &lt;&lt; endl;
++		}
++	}
++	if (!chk_lp)
+ 		return;
+-	chk_lp = cfg_en-&gt;checks;
+-	list&lt;CheckEntry&gt;::iterator it;
++
+ 	for (it = chk_lp-&gt;begin(); it != chk_lp-&gt;end(); it++) {
+-		if (it-&gt;check &gt; DO_UNCHECKED) {
+-			cout &lt;&lt; &quot;check &quot; &lt;&lt; hex &lt;&lt; it-&gt;addr &lt;&lt; dec;
+-			if (it-&gt;check == DO_LT)
+-				cout &lt;&lt; &quot; &lt;&quot;;
+-			else if (it-&gt;check == DO_GT)
+-				cout &lt;&lt; &quot; &gt;&quot;;
+-		}
++		check_op = get_check_op(it-&gt;check);
++		if (!check_op)
++			continue;
++
++		cout &lt;&lt; &quot;    check &quot; &lt;&lt; hex &lt;&lt; it-&gt;addr &lt;&lt; dec &lt;&lt; check_op;
+ 		if (it-&gt;is_float) {
+ 			memcpy(&amp;tmp_dval, &amp;it-&gt;value, sizeof(i64));
+-			cout &lt;&lt; &quot; &quot; &lt;&lt; tmp_dval
+-			     &lt;&lt; ((it-&gt;is_objcheck) ? &quot; (objcheck)&quot; : &quot;&quot;) &lt;&lt; endl;
++			cout &lt;&lt; tmp_dval &lt;&lt; get_objcheck_str(&amp;(*it)) &lt;&lt; endl;
+ 		} else {
+-			cout &lt;&lt; &quot; &quot; &lt;&lt; it-&gt;value
+-			     &lt;&lt; ((it-&gt;is_objcheck) ?&quot; (objcheck)&quot; : &quot;&quot;) &lt;&lt; endl;
++			cout &lt;&lt; it-&gt;value &lt;&lt; get_objcheck_str(&amp;(*it)) &lt;&lt; endl;
+ 		}
+ 	}
+ }
+@@ -136,8 +155,10 @@ static void output_config (list&lt;CfgEntry&gt; *cfg)
+ 				&lt;&lt; cfg_en.dynmem-&gt;mem_size &lt;&lt; &quot; &quot;
+ 				&lt;&lt; hex &lt;&lt; cfg_en.dynmem-&gt;code_addr &lt;&lt; &quot; &quot;
+ 				&lt;&lt; cfg_en.dynmem-&gt;stack_offs &lt;&lt; dec &lt;&lt; endl;
+-		cout &lt;&lt; cfg_en.name &lt;&lt; &quot; &quot; &lt;&lt; hex &lt;&lt; cfg_en.addr &lt;&lt; dec;
+-		cout &lt;&lt; &quot; &quot; &lt;&lt; cfg_en.size &lt;&lt; &quot; &quot;;
++		else
++			cout &lt;&lt; &quot;static: &quot; &lt;&lt; endl;
++		cout &lt;&lt; &quot;  &quot; &lt;&lt; cfg_en.name &lt;&lt; &quot; &quot; &lt;&lt; hex &lt;&lt; cfg_en.addr &lt;&lt; dec;
++		cout &lt;&lt; &quot; &quot; &lt;&lt; cfg_en.size &lt;&lt; &quot;-bit &quot;;
+ 		if (cfg_en.is_float) {
+ 			memcpy(&amp;tmp_dval, &amp;cfg_en.value, sizeof(i64));
+ 			cout &lt;&lt; tmp_dval &lt;&lt; endl;
+@@ -289,11 +310,24 @@ static void output_mem_val (CfgEntry *cfg_en, void *mem_offs, bool is_dynmem)
+ }
+ 
+ template &lt;typename T&gt;
+-static inline i32 check_mem_val (T value, u8 *chk_buf, i32 check)
++static inline i32 check_mem_val (T value, u8 *chk_buf, check_e check)
+ {
+-	if ((check == DO_LT &amp;&amp; *(T *)chk_buf &lt; value) ||
+-	    (check == DO_GT &amp;&amp; *(T *)chk_buf &gt; value))
++	switch (check) {
++	case CHECK_LT:
++		if (*(T *)chk_buf &lt; value)
++			return 0;
++		break;
++	case CHECK_GT:
++		if (*(T *)chk_buf &gt; value)
++			return 0;
++		break;
++	case CHECK_EQ:
++		if (*(T *)chk_buf == value)
++			return 0;
++		break;
++	default:
+ 		return 0;
++	}
+ 	return -1;
+ }
+ 
+@@ -327,16 +361,15 @@ static i32 check_memory (CheckEntry chk_en, u8 *chk_buf)
+ template &lt;typename T&gt;
+ static void change_mem_val (pid_t pid, CfgEntry *cfg_en, T value, u8 *buf, void *mem_offs)
+ {
+-	list&lt;CheckEntry&gt; *chk_lp;
++	list&lt;CheckEntry&gt; *chk_lp = cfg_en-&gt;checks;
++	list&lt;CheckEntry&gt;::iterator it;
+ 	u8 chk_buf[sizeof(i64)];
+ 	void *mem_addr;
+ 
+ 	if (cfg_en-&gt;dynval == DYN_VAL_WATCH)
+ 		return;
+ 
+-	if (cfg_en-&gt;checks) {
+-		chk_lp = cfg_en-&gt;checks;
+-		list&lt;CheckEntry&gt;::iterator it;
++	if (chk_lp) {
+ 		for (it = chk_lp-&gt;begin(); it != chk_lp-&gt;end(); it++) {
+ 			mem_addr = PTR_ADD(void *, mem_offs, it-&gt;addr);
+ 
+@@ -352,9 +385,7 @@ static void change_mem_val (pid_t pid, CfgEntry *cfg_en, T value, u8 *buf, void
+ 		}
+ 	}
+ 
+-	if ((cfg_en-&gt;check == DO_UNCHECKED) ||
+-	    (cfg_en-&gt;check == DO_LT &amp;&amp; *(T *)buf &lt; value) ||
+-	    (cfg_en-&gt;check == DO_GT &amp;&amp; *(T *)buf &gt; value)) {
++	if (check_mem_val(value, buf, cfg_en-&gt;check) == 0) {
+ 		memcpy(buf, &amp;value, sizeof(T));
+ 		mem_addr = PTR_ADD(void *, mem_offs, cfg_en-&gt;addr);
+ 
+@@ -1024,8 +1055,11 @@ i32 main (i32 argc, char **argv, char **env)
+ 
+ 	cout &lt;&lt; &quot;Config:&quot; &lt;&lt; endl;
+ 	output_config(&amp;cfg);
++	cout &lt;&lt; endl;
+ 	cout &lt;&lt; &quot;Activated:&quot; &lt;&lt; endl;
+ 	output_configp(cfg_act);
++	cout &lt;&lt; endl;
++
+ 	if (cfg.empty() &amp;&amp; !emptycfg)
+ 		return -1;
+ 
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000059.html">[Ugtrain-devel] [PATCH] cfgentry: rework names, order, types,	comments
+</A></li>
+	<LI>Next message: <A HREF="000061.html">[Ugtrain-devel] [PATCH 0/3] ugtrain: complete Warzone 2100 cheating
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#60">[ date ]</a>
+              <a href="thread.html#60">[ thread ]</a>
+              <a href="subject.html#60">[ subject ]</a>
+              <a href="author.html#60">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

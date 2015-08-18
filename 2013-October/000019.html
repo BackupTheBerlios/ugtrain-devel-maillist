@@ -1,0 +1,244 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 1/4] remove scanmem_extension directory
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-October/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%201/4%5D%20remove%20scanmem_extension%20directory&In-Reply-To=%3C1380885648-7237-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000020.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 1/4] remove scanmem_extension directory</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%201/4%5D%20remove%20scanmem_extension%20directory&In-Reply-To=%3C1380885648-7237-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 1/4] remove scanmem_extension directory">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Fri Oct  4 13:20:45 CEST 2013</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000020.html">[Ugtrain-devel] [PATCH 2/4] examples: introduce a single README for	the config syntax
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#19">[ date ]</a>
+              <a href="thread.html#19">[ thread ]</a>
+              <a href="subject.html#19">[ subject ]</a>
+              <a href="author.html#19">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>If upstream scanmem doesn't want to have an array/vector dump, then
+why not write an own tool to do just that?
+
+That sounds much better than forking and hacking scanmem. They are
+plain not aware of dynamic memory objects which are put to heap
+memory one after another of the same memory class and therefore
+size. Anyway, ugtrain has a dump of the dynamic memory objects it
+captures by now ('&gt;' key). So we can dump and analyze them this
+way much better. A tool like this would only be needed for Wine
+as we can't hook malloc() and free() there, yet.
+---
+ scanmem_extension/001_dumparr_r251.patch | 149 -------------------------------
+ scanmem_extension/patch_scanmem.sh       |   4 -
+ 2 files changed, 153 deletions(-)
+ delete mode 100644 scanmem_extension/001_dumparr_r251.patch
+ delete mode 100755 scanmem_extension/patch_scanmem.sh
+
+diff --git a/scanmem_extension/001_dumparr_r251.patch b/scanmem_extension/001_dumparr_r251.patch
+deleted file mode 100644
+index 3e27e67..0000000
+--- a/scanmem_extension/001_dumparr_r251.patch
++++ /dev/null
+@@ -1,149 +0,0 @@
+-diff -urpN a/scanmem/handlers.c b/scanmem/handlers.c
+---- a/scanmem/handlers.c	2012-07-12 07:00:52.000000000 +0200
+-+++ b/scanmem/handlers.c	2012-07-12 07:12:19.000000000 +0200
+-@@ -1335,6 +1335,115 @@ bool handler__dump(globals_t * vars, cha
+-     return true;
+- }
+- 
+-+bool handler__dumparr(globals_t * vars, char **argv, unsigned argc)
+-+{
+-+    void *addr;
+-+    char *endptr;
+-+    char *buf = NULL;
+-+    char *prefix = NULL;
+-+    char empty_str = 0;
+-+    char file_name[256] = {0};
+-+    int len, min, max, idx;
+-+    FILE *dump_f = NULL;
+-+
+-+    if (argc &lt; 5 || argc &gt; 6)
+-+    {
+-+        show_error(&quot;bad argument, see `help dumparr`.\n&quot;);
+-+        return false;
+-+    }
+-+
+-+    /* check address */
+-+    errno = 0;
+-+    addr = (void *)(strtoll(argv[1], &amp;endptr, 16));
+-+    if ((errno != 0) || (*endptr != '\0'))
+-+    {
+-+        show_error(&quot;bad address, see `help dumparr`.\n&quot;);
+-+        return false;
+-+    }
+-+
+-+    /* check element length */
+-+    errno = 0;
+-+    len = strtoll(argv[2], &amp;endptr, 0);
+-+    if ((errno != 0) || (*endptr != '\0'))
+-+    {
+-+        show_error(&quot;bad length, see `help dumparr`.\n&quot;);
+-+        return false;
+-+    }
+-+
+-+    /* check min_idx */
+-+    errno = 0;
+-+    min = strtoll(argv[3], &amp;endptr, 0);
+-+    if ((errno != 0) || (*endptr != '\0'))
+-+    {
+-+        show_error(&quot;bad min_idx, see `help dumparr`.\n&quot;);
+-+        return false;
+-+    }
+-+
+-+    /* check max_idx */
+-+    errno = 0;
+-+    max = strtoll(argv[4], &amp;endptr, 0);
+-+    if ((errno != 0) || (*endptr != '\0'))
+-+    {
+-+        show_error(&quot;bad max_idx, see `help dumparr`.\n&quot;);
+-+        return false;
+-+    }
+-+
+-+    if ((max - min) &gt;= 1000)
+-+    {
+-+        show_error(&quot;too many elements, see `help dumparr`.\n&quot;);
+-+        return false;
+-+    }
+-+
+-+    addr += (min * len);
+-+
+-+    /* check prefix */
+-+    if (argc == 6)
+-+    {
+-+        prefix = argv[5];
+-+    }
+-+    else
+-+    {
+-+        prefix = &amp;empty_str;
+-+    }
+-+
+-+    buf = malloc(len + sizeof(long));
+-+    if (buf == NULL)
+-+    {
+-+        show_error(&quot;memory allocation failed.\n&quot;);
+-+        return false;
+-+    }
+-+
+-+    for (idx = 0; idx &lt; max - min; idx++)
+-+    {
+-+        sprintf(file_name, &quot;%s%03d&quot;, prefix, idx);
+-+        if ((dump_f = fopen(file_name, &quot;wb&quot;)) == NULL)
+-+        {
+-+            show_error(&quot;failed to open file\n&quot;);
+-+            return false;
+-+        }
+-+
+-+        if (!read_array(vars-&gt;target, addr, buf, len))
+-+        {
+-+            show_error(&quot;read memory failed.\n&quot;);
+-+            free(buf);
+-+            return false;
+-+        }
+-+
+-+        size_t s = fwrite(buf, 1, len, dump_f);
+-+        fclose(dump_f);
+-+        if (s != len)
+-+        {
+-+            show_error(&quot;write to file failed.\n&quot;);
+-+            free(buf);
+-+            return false;
+-+        }
+-+        addr += len;
+-+    }
+-+
+-+    free(buf);
+-+    return true;
+-+}
+-+
+- bool handler__write(globals_t * vars, char **argv, unsigned argc)
+- {
+-     int data_width = 0;
+-diff -urpN a/scanmem/handlers.h b/scanmem/handlers.h
+---- a/scanmem/handlers.h	2012-07-12 07:00:52.000000000 +0200
+-+++ b/scanmem/handlers.h	2012-07-12 07:06:31.000000000 +0200
+-@@ -235,6 +235,15 @@ bool handler__show(globals_t * vars, cha
+-     
+- bool handler__dump(globals_t * vars, char **argv, unsigned argc);
+- 
+-+#define DUMPARR_SHRTDOC &quot;dump an array of memory regions to files&quot;
+-+#define DUMPARR_LONGDOC &quot;usage: dumparr &lt;address&gt; &lt;element_length&gt; &lt;min_idx&gt; &lt;max_idx&gt; [&lt;prefix&gt;]\n&quot; \
+-+                &quot;\n&quot; \
+-+                &quot;If &lt;prefix&gt; is given, file names start with the prefix. \n&quot; \
+-+                &quot;Otherwise they start with their number direcly (e.g. \&quot;005\&quot;).\n&quot; \
+-+                &quot;min_idx can also be negative if you want to look around a known address.&quot;
+-+
+-+bool handler__dumparr(globals_t * vars, char **argv, unsigned argc);
+-+
+- #define WRITE_SHRTDOC &quot;change the value of a specific memory location&quot;
+- #define WRITE_LONGDOC &quot;usage: write &lt;value_type&gt; &lt;address&gt; &lt;value&gt;\n&quot; \
+-                 &quot;\n&quot; \
+-diff -urpN a/scanmem/main.c b/scanmem/main.c
+---- a/scanmem/main.c	2012-07-12 07:00:52.000000000 +0200
+-+++ b/scanmem/main.c	2012-07-12 07:02:21.000000000 +0200
+-@@ -190,6 +190,7 @@ int main(int argc, char **argv)
+-     registercommand(&quot;show&quot;, handler__show, vars-&gt;commands, SHOW_SHRTDOC, SHOW_LONGDOC);
+-     registercommand(&quot;dump&quot;, handler__dump, vars-&gt;commands, DUMP_SHRTDOC, DUMP_LONGDOC);
+-     registercommand(&quot;write&quot;, handler__write, vars-&gt;commands, WRITE_SHRTDOC, WRITE_LONGDOC);
+-+    registercommand(&quot;dumparr&quot;, handler__dumparr, vars-&gt;commands, DUMPARR_SHRTDOC, DUMPARR_LONGDOC);
+-     registercommand(&quot;option&quot;, handler__option, vars-&gt;commands, OPTION_SHRTDOC, OPTION_LONGDOC);
+- 
+-     /* commands beginning with __ have special meaning */
+diff --git a/scanmem_extension/patch_scanmem.sh b/scanmem_extension/patch_scanmem.sh
+deleted file mode 100755
+index f39293c..0000000
+--- a/scanmem_extension/patch_scanmem.sh
++++ /dev/null
+@@ -1,4 +0,0 @@
+-#!/bin/bash
+-rm -Rf scanmem
+-svn co <A HREF="http://scanmem.googlecode.com/svn/trunk/">http://scanmem.googlecode.com/svn/trunk/</A> -r 251 scanmem
+-patch -p1 &lt; 001_*.patch
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000020.html">[Ugtrain-devel] [PATCH 2/4] examples: introduce a single README for	the config syntax
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#19">[ date ]</a>
+              <a href="thread.html#19">[ thread ]</a>
+              <a href="subject.html#19">[ subject ]</a>
+              <a href="author.html#19">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

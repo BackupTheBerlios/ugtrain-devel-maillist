@@ -1,0 +1,197 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] libmemhack: fix and enhance config buffer	handling
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-September/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20libmemhack%3A%20fix%20and%20enhance%20config%20buffer%0A%09handling&In-Reply-To=%3C1378448357-2741-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000011.html">
+   <LINK REL="Next"  HREF="000013.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] libmemhack: fix and enhance config buffer	handling</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20libmemhack%3A%20fix%20and%20enhance%20config%20buffer%0A%09handling&In-Reply-To=%3C1378448357-2741-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] libmemhack: fix and enhance config buffer	handling">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Fri Sep  6 08:19:17 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000011.html">[Ugtrain-devel] [PATCH] linuxhooking: unify use of 'common.h',	increase config space
+</A></li>
+        <LI>Next message: <A HREF="000013.html">[Ugtrain-devel] [PATCH] ugtrain: reduce dynamic memory printing
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#12">[ date ]</a>
+              <a href="thread.html#12">[ thread ]</a>
+              <a href="subject.html#12">[ subject ]</a>
+              <a href="author.html#12">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>ATTENTION: This fix is very important!
+
+We've noticed instability with two memory classes and great enough
+max. object count per class. What happened was that the mem_addrs
+pointer has been set overlapping with the previous memory class
+due to missing sizeof(void *) multiplication.
+
+So add a lot more debugging output and fix the calculations so that
+the result is correct and there is no division by zero anymore.
+We check now much stricter if everything fits into the config
+buffer and don't allow any incomplete config anymore. It's all or
+nothing, now.
+---
+ linuxhooking/libmemhack.c |   66 +++++++++++++++++++++++++++++++--------------
+ 1 file changed, 46 insertions(+), 20 deletions(-)
+
+diff --git a/linuxhooking/libmemhack.c b/linuxhooking/libmemhack.c
+index 28cf193..b417b83 100644
+--- a/linuxhooking/libmemhack.c
++++ b/linuxhooking/libmemhack.c
+@@ -93,9 +93,9 @@ void __attribute ((constructor)) memhack_init (void)
+ {
+ 	ssize_t rbytes;
+ 	char ibuf[BUF_SIZE] = { 0 };
+-	i32 i, j, k, ibuf_offs = 0, num_cfg = 0, cfg_offs = 0, scanned = 0;
++	u32 i, j, k, ibuf_offs = 0, num_cfg = 0, cfg_offs = 0;
+ 	u32 max_obj;
+-	i32 read_tries;
++	i32 read_tries, scanned = 0;
+ 
+ 	sigignore(SIGPIPE);
+ 	sigignore(SIGCHLD);
+@@ -124,31 +124,47 @@ void __attribute ((constructor)) memhack_init (void)
+ 		usleep(250 * 1000);
+ 	}
+ 
+-	scanned = sscanf(ibuf + ibuf_offs, &quot;%d&quot;, &amp;num_cfg);
++	scanned = sscanf(ibuf + ibuf_offs, &quot;%u&quot;, &amp;num_cfg);
+ 	if (scanned != 1)
+ 		goto err;
+ 	SET_IBUF_OFFS(1, j);
+-	cfg_offs = (num_cfg + 1) * sizeof(cfg_s *);
+-	max_obj = sizeof(config) - cfg_offs - num_cfg * sizeof(cfg_s);
+-	max_obj /= sizeof(void *) * num_cfg;
+-	if (max_obj &lt;= 1)
++	cfg_offs = (num_cfg + 1) * sizeof(cfg_s *);  /* NULL for cfg_s* end */
++	if (cfg_offs + num_cfg * sizeof(cfg_s) &gt; sizeof(config) ||
++	    num_cfg == 0) {
++		max_obj = 0;
++	} else {
++		max_obj = sizeof(config) - cfg_offs - num_cfg * sizeof(cfg_s);
++		max_obj /= sizeof(void *) * num_cfg;
++	}
++	if (max_obj &lt;= 1) {
+ 		fprintf(stderr, PFX &quot;Error: No space for memory addresses!\n&quot;);
+-	else
++		goto err;
++	} else {
+ 		fprintf(stdout, PFX &quot;Using max. %u objects per class.\n&quot;,
+ 			max_obj - 1);
++	}
++
++	printf(PFX &quot;sizeof(config) = %lu\n&quot;, (ulong) sizeof(config));
++	printf(PFX &quot;sizeof(cfg_s) = %lu\n&quot;, (ulong) sizeof(cfg_s));
+ 
+ 	/* read config into config array */
+ 	for (i = 0; i &lt; num_cfg; i++) {
+ 		config[i] = PTR_ADD2(cfg_s *, config, cfg_offs,
+ 			i * sizeof(cfg_s));
++
++		printf(PFX &quot;&amp;config[%u] pos = %lu\n&quot;, i,
++			(ulong) PTR_SUB(void *, &amp;config[i], config));
++		printf(PFX &quot;config[%u] pos = %lu\n&quot;, i,
++			(ulong) PTR_SUB(void *, config[i], config));
++		printf(PFX &quot;config[%u] end pos = %lu\n&quot;, i,
++			(ulong)((ptr_t) config[i] + sizeof(cfg_s) -
++				(ptr_t) config));
++
+ 		if ((ptr_t) config[i] + sizeof(cfg_s) - (ptr_t) config
+-		    &gt; PIPE_BUF || ibuf_offs &gt;= BUF_SIZE) {
+-			/* config doesn't fit, truncate it */
+-			fprintf(stderr, PFX &quot;Config buffer too &quot;
+-					&quot;small, truncating!\n&quot;);
+-			config[i] = NULL;
+-			num_cfg = i;
+-			break;
++		    &gt; sizeof(config) || ibuf_offs &gt;= BUF_SIZE) {
++			/* config doesn't fit */
++			fprintf(stderr, PFX &quot;Config buffer too small!\n&quot;);
++			goto err;
+ 		}
+ 		scanned = sscanf(ibuf + ibuf_offs, &quot;%zd;%p&quot;,
+ 			&amp;config[i]-&gt;mem_size, &amp;config[i]-&gt;code_addr);
+@@ -163,14 +179,24 @@ void __attribute ((constructor)) memhack_init (void)
+ 			SET_IBUF_OFFS(1, j);
+ 		}
+ 
+-		if (max_obj &lt;= 1)
+-			continue;
+ 		/* put stored memory addresses behind all cfg_s stuctures */
+ 		config[i]-&gt;max_obj = max_obj - 1;
+ 		config[i]-&gt;mem_addrs = PTR_ADD2(void **, config, cfg_offs,
+ 			num_cfg * sizeof(cfg_s));
+ 		config[i]-&gt;mem_addrs = PTR_ADD(void **, config[i]-&gt;mem_addrs,
+-			i * max_obj);
++			i * max_obj * sizeof(void *));
++
++		/* debug mem_addrs pointer */
++		printf(PFX &quot;config[%u]-&gt;mem_addrs pos = %lu\n&quot;, i,
++			(ulong) PTR_SUB(void *, config[i]-&gt;mem_addrs, config));
++		printf(PFX &quot;config[%u]-&gt;mem_addrs end pos = %lu\n&quot;, i,
++			(ulong) PTR_SUB(void *, config[i]-&gt;mem_addrs, config) +
++			(ulong) (max_obj * sizeof(void *)));
++
++		if ((ulong) PTR_SUB(void *, config[i]-&gt;mem_addrs, config) +
++		    (ulong) (max_obj * sizeof(void *)) &gt; sizeof(config))
++			goto err;
++
+ 		/* fill with invalid pointers to detect end */
+ 		for (k = 0; k &lt; max_obj; k++)
+ 			config[i]-&gt;mem_addrs[k] = PTR_INVAL;
+@@ -179,9 +205,9 @@ void __attribute ((constructor)) memhack_init (void)
+ 		goto err;
+ 
+ 	/* debug config */
+-	printf(PFX &quot;num_cfg: %d, cfg_offs: %d\n&quot;, num_cfg, cfg_offs);
++	printf(PFX &quot;num_cfg: %u, cfg_offs: %u\n&quot;, num_cfg, cfg_offs);
+ 	for (i = 0; config[i] != NULL; i++) {
+-		fprintf(stdout, PFX &quot;config[%d]: mem_size: %zd; &quot;
++		fprintf(stdout, PFX &quot;config[%u]: mem_size: %zd; &quot;
+ 			&quot;code_addr: %p; stack_offs: %p\n&quot;, i,
+ 			config[i]-&gt;mem_size, config[i]-&gt;code_addr,
+ 			config[i]-&gt;stack_offs[0]);
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000011.html">[Ugtrain-devel] [PATCH] linuxhooking: unify use of 'common.h',	increase config space
+</A></li>
+	<LI>Next message: <A HREF="000013.html">[Ugtrain-devel] [PATCH] ugtrain: reduce dynamic memory printing
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#12">[ date ]</a>
+              <a href="thread.html#12">[ thread ]</a>
+              <a href="subject.html#12">[ subject ]</a>
+              <a href="author.html#12">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,530 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain: move the config output to new files
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2014-January/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20move%20the%20config%20output%20to%20new%20files&In-Reply-To=%3C1390598699-7680-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000095.html">
+   <LINK REL="Next"  HREF="000097.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain: move the config output to new files</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20move%20the%20config%20output%20to%20new%20files&In-Reply-To=%3C1390598699-7680-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain: move the config output to new files">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Fri Jan 24 22:24:58 CET 2014</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000095.html">[Ugtrain-devel] [PATCH] ugtrain: fix and enhance config output
+</A></li>
+        <LI>Next message: <A HREF="000097.html">[Ugtrain-devel] [PATCH] ugtrain: move the dynmem object dump to new	files
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#96">[ date ]</a>
+              <a href="thread.html#96">[ thread ]</a>
+              <a href="subject.html#96">[ subject ]</a>
+              <a href="author.html#96">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>src/cfgoutput.cpp
+src/cfgoutput.h
+
+Functionality is exactly the same.
+---
+ src/Makefile.am   |    2 +
+ src/cfgoutput.cpp |  202 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/cfgoutput.h   |   27 +++++++
+ src/ugtrain.cpp   |  173 +--------------------------------------------
+ 4 files changed, 232 insertions(+), 172 deletions(-)
+ create mode 100644 src/cfgoutput.cpp
+ create mode 100644 src/cfgoutput.h
+
+diff --git a/src/Makefile.am b/src/Makefile.am
+index 8cf8e09..3b09cc6 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -5,6 +5,7 @@ ugtrain_SOURCES = common.h \
+                   getch.h \
+                   system.h \
+                   cfgparser.h \
++                  cfgoutput.h \
+                   fifoparser.h \
+                   discovery.h \
+                   commont.cpp \
+@@ -12,6 +13,7 @@ ugtrain_SOURCES = common.h \
+                   ugtrain.cpp \
+                   options.c \
+                   cfgparser.cpp \
++                  cfgoutput.cpp \
+                   getch_l.c \
+                   getch_w.c \
+                   system_l.c \
+diff --git a/src/cfgoutput.cpp b/src/cfgoutput.cpp
+new file mode 100644
+index 0000000..d4d136d
+--- /dev/null
++++ b/src/cfgoutput.cpp
+@@ -0,0 +1,202 @@
++/* cfgoutput.cpp:    output functions for the ugtrain config
++ *
++ * Copyright (c) 2012..13, by:  Sebastian Riemer
++ *    All rights reserved.     &lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">sebastian.riemer at gmx.de</A>&gt;
++ *
++ * powered by the Open Game Cheating Association
++ *
++ * This file may be used subject to the terms and conditions of the
++ * GNU General Public License Version 2, or any later version
++ * at your option, as published by the Free Software Foundation.
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * By the original authors of ugtrain there shall be ABSOLUTELY
++ * NO RESPONSIBILITY or LIABILITY for derived work and/or abusive
++ * or malicious use. The ugtrain is an education project and
++ * sticks to the copyright law by providing configs for games
++ * which ALLOW CHEATING only. We can't and we don't accept abusive
++ * configs or codes which might turn ugtrain into a cracker tool!
++ */
++
++#include &lt;cstring&gt;
++
++// local includes
++#include &quot;cfgoutput.h&quot;
++
++
++static void output_config_val (CfgEntry *cfg_en)
++{
++	switch (cfg_en-&gt;dynval) {
++	case DYN_VAL_WATCH:
++		cout &lt;&lt; &quot;(watch)&quot; &lt;&lt; endl;
++		break;
++	case DYN_VAL_MIN:
++		cout &lt;&lt; cfg_en-&gt;value &lt;&lt; &quot; (min)&quot; &lt;&lt; endl;
++		break;
++	case DYN_VAL_MAX:
++		cout &lt;&lt; cfg_en-&gt;value &lt;&lt; &quot; (max)&quot; &lt;&lt; endl;
++		break;
++	case DYN_VAL_ADDR:
++		if (cfg_en-&gt;cfg_ref)
++			cout &lt;&lt; cfg_en-&gt;cfg_ref-&gt;name &lt;&lt; endl;
++		else
++			cout &lt;&lt; &quot;0x&quot; &lt;&lt; hex &lt;&lt; cfg_en-&gt;value
++				&lt;&lt; &quot; (from addr)&quot; &lt;&lt; dec &lt;&lt; endl;
++		break;
++	default:
++		cout &lt;&lt; cfg_en-&gt;value &lt;&lt; endl;
++		break;
++	}
++}
++
++static void output_config_en (CfgEntry *cfg_en)
++{
++	double tmp_dval;
++
++	if (cfg_en-&gt;ptrtgt) {
++		cout &lt;&lt; &quot;  &quot; &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot; 0x&quot; &lt;&lt; hex &lt;&lt; (long) cfg_en-&gt;addr &lt;&lt; dec
++			&lt;&lt; &quot; &quot; &lt;&lt; 8 * sizeof(void *) &lt;&lt; &quot;-bit -&gt; &quot;
++			&lt;&lt; cfg_en-&gt;ptrtgt-&gt;name &lt;&lt; endl;
++	} else {
++		cout &lt;&lt; &quot;  &quot; &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot; 0x&quot; &lt;&lt; hex &lt;&lt; (long) cfg_en-&gt;addr &lt;&lt; dec
++			&lt;&lt; &quot; &quot; &lt;&lt; cfg_en-&gt;size &lt;&lt; &quot;-bit &quot;;
++		if (cfg_en-&gt;is_float) {
++			memcpy(&amp;tmp_dval, &amp;cfg_en-&gt;value, sizeof(i64));
++			cout &lt;&lt; tmp_dval &lt;&lt; endl;
++		} else {
++			output_config_val(cfg_en);
++		}
++	}
++}
++
++static void output_ptrmem (CfgEntry *cfg_en)
++{
++	list&lt;CfgEntry*&gt; *cfg_act = &amp;cfg_en-&gt;ptrtgt-&gt;cfg_act;
++	list&lt;CfgEntry*&gt;::iterator it;
++
++	for (it = cfg_act-&gt;begin(); it != cfg_act-&gt;end(); it++) {
++		cfg_en = *it;
++		cout &lt;&lt; &quot;  -&gt;&quot;;
++		output_config_en(cfg_en);
++	}
++}
++
++static char *get_objcheck_str (CheckEntry *chk_en)
++{
++	return (char *) ((chk_en-&gt;is_objcheck) ?&quot; (objcheck)&quot; : &quot;&quot;);
++}
++
++static char *get_check_op (check_e check)
++{
++	char *check_op;
++
++	switch (check) {
++	case CHECK_LT:
++		check_op = (char *) &quot; &lt; &quot;;
++		break;
++	case CHECK_GT:
++		check_op = (char *) &quot; &gt; &quot;;
++		break;
++	case CHECK_EQ:
++		check_op = (char *) &quot; == &quot;;
++		break;
++	default:
++		check_op = NULL;
++		break;
++	}
++	return check_op;
++}
++
++static void output_checks (CfgEntry *cfg_en)
++{
++	list&lt;CheckEntry&gt; *chk_lp = cfg_en-&gt;checks;
++	list&lt;CheckEntry&gt;::iterator it;
++	u32 i;
++	double tmp_dval;
++	char *check_op = get_check_op(cfg_en-&gt;check);
++
++	if (check_op) {
++		cout &lt;&lt; &quot;    check 0x&quot; &lt;&lt; hex &lt;&lt; (long) cfg_en-&gt;addr &lt;&lt; dec &lt;&lt; check_op;
++
++		if (cfg_en-&gt;is_float) {
++			memcpy(&amp;tmp_dval, &amp;cfg_en-&gt;value, sizeof(i64));
++			cout &lt;&lt; tmp_dval &lt;&lt; endl;
++		} else {
++			output_config_val(cfg_en);
++		}
++	}
++	if (!chk_lp)
++		return;
++
++	for (it = chk_lp-&gt;begin(); it != chk_lp-&gt;end(); it++) {
++		if (it-&gt;cfg_ref)
++			cout &lt;&lt; &quot;    check &quot; &lt;&lt; it-&gt;cfg_ref-&gt;name;
++		else
++			cout &lt;&lt; &quot;    check 0x&quot; &lt;&lt; hex &lt;&lt; (long) it-&gt;addr &lt;&lt; dec;
++		for (i = 0; it-&gt;check[i] != CHECK_END; i++) {
++			if (i &gt; 0)
++				cout &lt;&lt; &quot; ||&quot;;
++			check_op = get_check_op(it-&gt;check[i]);
++			cout &lt;&lt; check_op;
++
++			if (it-&gt;is_float) {
++				memcpy(&amp;tmp_dval, &amp;it-&gt;value[i], sizeof(i64));
++				cout &lt;&lt; tmp_dval &lt;&lt; get_objcheck_str(&amp;(*it));
++			} else {
++				cout &lt;&lt; it-&gt;value[i] &lt;&lt; get_objcheck_str(&amp;(*it));
++			}
++		}
++		cout &lt;&lt; endl;
++	}
++}
++
++void output_configp (list&lt;CfgEntry*&gt; *cfg)
++{
++	if (!cfg || cfg-&gt;empty()) {
++		cout &lt;&lt; &quot;&lt;none&gt;&quot; &lt;&lt; endl;
++		return;
++	}
++
++	CfgEntry *cfg_en;
++
++	list&lt;CfgEntry*&gt;::iterator it;
++	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
++		cfg_en = *it;
++		output_config_en(cfg_en);
++		if (cfg_en-&gt;ptrtgt)
++			output_ptrmem (cfg_en);
++	}
++}
++
++void output_config (list&lt;CfgEntry&gt; *cfg)
++{
++	if (!cfg || cfg-&gt;empty()) {
++		cout &lt;&lt; &quot;&lt;none&gt;&quot; &lt;&lt; endl;
++		return;
++	}
++
++	CfgEntry cfg_en;
++
++	list&lt;CfgEntry&gt;::iterator it;
++	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
++		cfg_en = *it;
++		// headline
++		if (cfg_en.dynmem)
++			cout &lt;&lt; &quot;dynmem: &quot; &lt;&lt; cfg_en.dynmem-&gt;name &lt;&lt; &quot; &quot;
++				&lt;&lt; cfg_en.dynmem-&gt;mem_size &lt;&lt; &quot; &quot;
++				&lt;&lt; hex &lt;&lt; cfg_en.dynmem-&gt;code_addr &lt;&lt; &quot; &quot;
++				&lt;&lt; cfg_en.dynmem-&gt;stack_offs &lt;&lt; dec &lt;&lt; endl;
++		else if (cfg_en.ptrmem)
++			cout &lt;&lt; &quot;ptrmem: &quot; &lt;&lt; cfg_en.ptrmem-&gt;name &lt;&lt; &quot; &quot;
++				&lt;&lt;  cfg_en.ptrmem-&gt;mem_size &lt;&lt; endl;
++		else
++			cout &lt;&lt; &quot;static: &quot; &lt;&lt; endl;
++
++		// value line
++		output_config_en(&amp;cfg_en);
++		output_checks(&amp;cfg_en);
++	}
++}
+diff --git a/src/cfgoutput.h b/src/cfgoutput.h
+new file mode 100644
+index 0000000..3b0982a
+--- /dev/null
++++ b/src/cfgoutput.h
+@@ -0,0 +1,27 @@
++/* cfgoutput.h:    output functions for the ugtrain config
++ *
++ * Copyright (c) 2012..13, by:  Sebastian Riemer
++ *    All rights reserved.     &lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">sebastian.riemer at gmx.de</A>&gt;
++ *
++ * powered by the Open Game Cheating Association
++ *
++ * This file may be used subject to the terms and conditions of the
++ * GNU General Public License Version 2, or any later version
++ * at your option, as published by the Free Software Foundation.
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#ifndef CFGOUTPUT_H
++#define CFGOUTPUT_H
++
++#include &lt;list&gt;
++#include &quot;common.h&quot;
++#include &quot;cfgentry.h&quot;
++
++void output_config (list&lt;CfgEntry&gt; *cfg);
++void output_configp (list&lt;CfgEntry*&gt; *cfg);
++
++#endif
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index 386b5fb..42d3cbe 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -39,6 +39,7 @@
+ #include &quot;options.h&quot;
+ #include &quot;cfgentry.h&quot;
+ #include &quot;cfgparser.h&quot;
++#include &quot;cfgoutput.h&quot;
+ #include &quot;system.h&quot;
+ #include &quot;getch.h&quot;
+ #include &quot;memattach.h&quot;
+@@ -50,179 +51,7 @@
+ #define DYNMEM_OUT &quot;/tmp/memhack_in&quot;
+ 
+ 
+-static void output_config_val (CfgEntry *cfg_en)
+-{
+-	switch (cfg_en-&gt;dynval) {
+-	case DYN_VAL_WATCH:
+-		cout &lt;&lt; &quot;(watch)&quot; &lt;&lt; endl;
+-		break;
+-	case DYN_VAL_MIN:
+-		cout &lt;&lt; cfg_en-&gt;value &lt;&lt; &quot; (min)&quot; &lt;&lt; endl;
+-		break;
+-	case DYN_VAL_MAX:
+-		cout &lt;&lt; cfg_en-&gt;value &lt;&lt; &quot; (max)&quot; &lt;&lt; endl;
+-		break;
+-	case DYN_VAL_ADDR:
+-		if (cfg_en-&gt;cfg_ref)
+-			cout &lt;&lt; cfg_en-&gt;cfg_ref-&gt;name &lt;&lt; endl;
+-		else
+-			cout &lt;&lt; &quot;0x&quot; &lt;&lt; hex &lt;&lt; cfg_en-&gt;value
+-				&lt;&lt; &quot; (from addr)&quot; &lt;&lt; dec &lt;&lt; endl;
+-		break;
+-	default:
+-		cout &lt;&lt; cfg_en-&gt;value &lt;&lt; endl;
+-		break;
+-	}
+-}
+-
+-static void output_config_en (CfgEntry *cfg_en)
+-{
+-	double tmp_dval;
+-
+-	if (cfg_en-&gt;ptrtgt) {
+-		cout &lt;&lt; &quot;  &quot; &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot; 0x&quot; &lt;&lt; hex &lt;&lt; (long) cfg_en-&gt;addr &lt;&lt; dec
+-			&lt;&lt; &quot; &quot; &lt;&lt; 8 * sizeof(void *) &lt;&lt; &quot;-bit -&gt; &quot;
+-			&lt;&lt; cfg_en-&gt;ptrtgt-&gt;name &lt;&lt; endl;
+-	} else {
+-		cout &lt;&lt; &quot;  &quot; &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot; 0x&quot; &lt;&lt; hex &lt;&lt; (long) cfg_en-&gt;addr &lt;&lt; dec
+-			&lt;&lt; &quot; &quot; &lt;&lt; cfg_en-&gt;size &lt;&lt; &quot;-bit &quot;;
+-		if (cfg_en-&gt;is_float) {
+-			memcpy(&amp;tmp_dval, &amp;cfg_en-&gt;value, sizeof(i64));
+-			cout &lt;&lt; tmp_dval &lt;&lt; endl;
+-		} else {
+-			output_config_val(cfg_en);
+-		}
+-	}
+-}
+-
+-static void output_ptrmem (CfgEntry *cfg_en)
+-{
+-	list&lt;CfgEntry*&gt; *cfg_act = &amp;cfg_en-&gt;ptrtgt-&gt;cfg_act;
+-	list&lt;CfgEntry*&gt;::iterator it;
+-
+-	for (it = cfg_act-&gt;begin(); it != cfg_act-&gt;end(); it++) {
+-		cfg_en = *it;
+-		cout &lt;&lt; &quot;  -&gt;&quot;;
+-		output_config_en(cfg_en);
+-	}
+-}
+-
+-void output_configp (list&lt;CfgEntry*&gt; *cfg)
+-{
+-	if (!cfg || cfg-&gt;empty()) {
+-		cout &lt;&lt; &quot;&lt;none&gt;&quot; &lt;&lt; endl;
+-		return;
+-	}
+-
+-	CfgEntry *cfg_en;
+-
+-	list&lt;CfgEntry*&gt;::iterator it;
+-	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
+-		cfg_en = *it;
+-		output_config_en(cfg_en);
+-		if (cfg_en-&gt;ptrtgt)
+-			output_ptrmem (cfg_en);
+-	}
+-}
+-
+-static char *get_objcheck_str (CheckEntry *chk_en)
+-{
+-	return (char *) ((chk_en-&gt;is_objcheck) ?&quot; (objcheck)&quot; : &quot;&quot;);
+-}
+-
+-static char *get_check_op (check_e check)
+-{
+-	char *check_op;
+-
+-	switch (check) {
+-	case CHECK_LT:
+-		check_op = (char *) &quot; &lt; &quot;;
+-		break;
+-	case CHECK_GT:
+-		check_op = (char *) &quot; &gt; &quot;;
+-		break;
+-	case CHECK_EQ:
+-		check_op = (char *) &quot; == &quot;;
+-		break;
+-	default:
+-		check_op = NULL;
+-		break;
+-	}
+-	return check_op;
+-}
+-
+-static void output_checks (CfgEntry *cfg_en)
+-{
+-	list&lt;CheckEntry&gt; *chk_lp = cfg_en-&gt;checks;
+-	list&lt;CheckEntry&gt;::iterator it;
+-	u32 i;
+-	double tmp_dval;
+-	char *check_op = get_check_op(cfg_en-&gt;check);
+-
+-	if (check_op) {
+-		cout &lt;&lt; &quot;    check 0x&quot; &lt;&lt; hex &lt;&lt; (long) cfg_en-&gt;addr &lt;&lt; dec &lt;&lt; check_op;
+-
+-		if (cfg_en-&gt;is_float) {
+-			memcpy(&amp;tmp_dval, &amp;cfg_en-&gt;value, sizeof(i64));
+-			cout &lt;&lt; tmp_dval &lt;&lt; endl;
+-		} else {
+-			output_config_val(cfg_en);
+-		}
+-	}
+-	if (!chk_lp)
+-		return;
+-
+-	for (it = chk_lp-&gt;begin(); it != chk_lp-&gt;end(); it++) {
+-		if (it-&gt;cfg_ref)
+-			cout &lt;&lt; &quot;    check &quot; &lt;&lt; it-&gt;cfg_ref-&gt;name;
+-		else
+-			cout &lt;&lt; &quot;    check 0x&quot; &lt;&lt; hex &lt;&lt; (long) it-&gt;addr &lt;&lt; dec;
+-		for (i = 0; it-&gt;check[i] != CHECK_END; i++) {
+-			if (i &gt; 0)
+-				cout &lt;&lt; &quot; ||&quot;;
+-			check_op = get_check_op(it-&gt;check[i]);
+-			cout &lt;&lt; check_op;
+-
+-			if (it-&gt;is_float) {
+-				memcpy(&amp;tmp_dval, &amp;it-&gt;value[i], sizeof(i64));
+-				cout &lt;&lt; tmp_dval &lt;&lt; get_objcheck_str(&amp;(*it));
+-			} else {
+-				cout &lt;&lt; it-&gt;value[i] &lt;&lt; get_objcheck_str(&amp;(*it));
+-			}
+-		}
+-		cout &lt;&lt; endl;
+-	}
+-}
+-
+-static void output_config (list&lt;CfgEntry&gt; *cfg)
+-{
+-	if (!cfg || cfg-&gt;empty()) {
+-		cout &lt;&lt; &quot;&lt;none&gt;&quot; &lt;&lt; endl;
+-		return;
+-	}
+ 
+-	CfgEntry cfg_en;
+-
+-	list&lt;CfgEntry&gt;::iterator it;
+-	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
+-		cfg_en = *it;
+-		// headline
+-		if (cfg_en.dynmem)
+-			cout &lt;&lt; &quot;dynmem: &quot; &lt;&lt; cfg_en.dynmem-&gt;name &lt;&lt; &quot; &quot;
+-				&lt;&lt; cfg_en.dynmem-&gt;mem_size &lt;&lt; &quot; &quot;
+-				&lt;&lt; hex &lt;&lt; cfg_en.dynmem-&gt;code_addr &lt;&lt; &quot; &quot;
+-				&lt;&lt; cfg_en.dynmem-&gt;stack_offs &lt;&lt; dec &lt;&lt; endl;
+-		else if (cfg_en.ptrmem)
+-			cout &lt;&lt; &quot;ptrmem: &quot; &lt;&lt; cfg_en.ptrmem-&gt;name &lt;&lt; &quot; &quot;
+-				&lt;&lt;  cfg_en.ptrmem-&gt;mem_size &lt;&lt; endl;
+-		else
+-			cout &lt;&lt; &quot;static: &quot; &lt;&lt; endl;
+-
+-		// value line
+-		output_config_en(&amp;cfg_en);
+-		output_checks(&amp;cfg_en);
+-	}
+-}
+ 
+ static void dump_ptr_mem (pid_t pid, u32 obj_id, u32 ptr_id,
+ 			  void *mem_addr, size_t size)
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000095.html">[Ugtrain-devel] [PATCH] ugtrain: fix and enhance config output
+</A></li>
+	<LI>Next message: <A HREF="000097.html">[Ugtrain-devel] [PATCH] ugtrain: move the dynmem object dump to new	files
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#96">[ date ]</a>
+              <a href="thread.html#96">[ thread ]</a>
+              <a href="subject.html#96">[ subject ]</a>
+              <a href="author.html#96">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

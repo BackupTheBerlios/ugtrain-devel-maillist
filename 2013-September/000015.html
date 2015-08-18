@@ -1,0 +1,101 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] discovery: add DEBUG_PARSING compiling	option
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-September/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20discovery%3A%20add%20DEBUG_PARSING%20compiling%0A%09option&In-Reply-To=%3C1380524539-4653-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000014.html">
+   <LINK REL="Next"  HREF="000016.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] discovery: add DEBUG_PARSING compiling	option</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20discovery%3A%20add%20DEBUG_PARSING%20compiling%0A%09option&In-Reply-To=%3C1380524539-4653-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] discovery: add DEBUG_PARSING compiling	option">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Mon Sep 30 09:02:19 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000014.html">[Ugtrain-devel] [PATCH] ugtrain: introduce reverse message parsing	for discovery
+</A></li>
+        <LI>Next message: <A HREF="000016.html">[Ugtrain-devel] [PATCH] examples: add adaption to Warzone 2100	64-bit
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#15">[ date ]</a>
+              <a href="thread.html#15">[ thread ]</a>
+              <a href="subject.html#15">[ subject ]</a>
+              <a href="author.html#15">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>When debugging the file read and the parsing, we don't want the
+input file to be created from scratch over and over again. So
+we add a compiling option to write the output from the FIFO to
+/dev/null in the stages 1, 2, 3 and 4 loop if activated.
+
+It is deactivated by default. So regular program execution is
+not affected. It is used for local debugging and testing only.
+---
+ src/discovery.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/discovery.cpp b/src/discovery.cpp
+index 8e557fc..c02ae9c 100644
+--- a/src/discovery.cpp
++++ b/src/discovery.cpp
+@@ -327,6 +327,8 @@ void run_stage5_loop (list&lt;CfgEntry&gt; *cfg, i32 ifd, i32 pmask, pid_t pid)
+ 	}
+ }
+ 
++#define DEBUG_PARSING 0
++
+ void run_stage1234_loop (void *argp)
+ {
+ 	i32 ifd = *(i32 *) argp;
+@@ -334,8 +336,12 @@ void run_stage1234_loop (void *argp)
+ 	char buf[PIPE_BUF];
+ 	ssize_t rbytes, wbytes;
+ 
++#if DEBUG_PARSING
++	ofd = open(&quot;/dev/null&quot;, O_WRONLY);
++#else
+ 	ofd = open(DYNMEM_FILE, O_WRONLY | O_CREAT | O_TRUNC,
+ 		   0644);
++#endif
+ 	if (ofd &lt; 0) {
+ 		perror(&quot;open ofd&quot;);
+ 		exit(1);
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000014.html">[Ugtrain-devel] [PATCH] ugtrain: introduce reverse message parsing	for discovery
+</A></li>
+	<LI>Next message: <A HREF="000016.html">[Ugtrain-devel] [PATCH] examples: add adaption to Warzone 2100	64-bit
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#15">[ date ]</a>
+              <a href="thread.html#15">[ thread ]</a>
+              <a href="subject.html#15">[ subject ]</a>
+              <a href="author.html#15">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,231 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] examples: warzone2100: 64-bit: add Droid	speed cheating
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-October/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20examples%3A%20warzone2100%3A%2064-bit%3A%20add%20Droid%0A%09speed%20cheating&In-Reply-To=%3C1382471656-11524-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000037.html">
+   <LINK REL="Next"  HREF="000039.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] examples: warzone2100: 64-bit: add Droid	speed cheating</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20examples%3A%20warzone2100%3A%2064-bit%3A%20add%20Droid%0A%09speed%20cheating&In-Reply-To=%3C1382471656-11524-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] examples: warzone2100: 64-bit: add Droid	speed cheating">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Tue Oct 22 21:54:16 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000037.html">[Ugtrain-devel] [PATCH] ugtrain: add '--glc' option for video	recording
+</A></li>
+        <LI>Next message: <A HREF="000039.html">[Ugtrain-devel] [PATCH] doc: introduce dynamic memory doc
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#38">[ date ]</a>
+              <a href="thread.html#38">[ thread ]</a>
+              <a href="subject.html#38">[ subject ]</a>
+              <a href="author.html#38">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>We reduce the Droid weight and increase the Droid base speed.
+
+We also clean up the static values and re-assign keys. Static
+values are disabled by default upon game start now as we can't
+adapt them, yet.
+---
+ examples/warzone2100-64.conf     |   37 ++++++++++++++++++++++---------------
+ examples/warzone2100_238-64.conf |   35 +++++++++++++++++++++--------------
+ 2 files changed, 43 insertions(+), 29 deletions(-)
+
+diff --git a/examples/warzone2100-64.conf b/examples/warzone2100-64.conf
+index a354ff2..3687669 100644
+--- a/examples/warzone2100-64.conf
++++ b/examples/warzone2100-64.conf
+@@ -1,18 +1,8 @@
+ warzone2100
+ 
+-# Warzone 2100 - Version 3.1.0, Gentoo Linux, 64 bit
++# Warzone 2100 - Version 3.1.0, Gentoo Linux, 64-bit
+ #
+ # $ ugtrain -P libmemhack64.so examples/warzone2100-64
+-#
+-# Looks like we have some static values here.
+-#
+-# Cheaters don't like to be accused to be one. ;-)
+-
+-Cheated 0xbc8280 u8 g 0 1,9 a
+-DebugEn 0x1002a30 u8 l 1 2,9 a
+-
+-Power 0x103bf84 i32 l 5000 3,9 a
+-check 0x103bf84 i32 g 10
+ 
+ 
+ # Found the body points of an own MG Viper droid with scanmem
+@@ -26,7 +16,7 @@ check 0x103bf84 i32 g 10
+ dynmemstart Droid 864 0x4a6c5a 0x28
+ 
+ # Increase the maximum body points
+-DMaxBody 0x1bc u16 l 2000 4,9 a
++DMaxBody 0x1bc u16 l 2000 1,9 a
+ check 0x1bc u16 g 2
+ check 0x70 u16 g 2
+ 
+@@ -35,11 +25,17 @@ checko 0x22 u8 l 1
+ 
+ # Read the max. 'body' value from 'originalBody' value
+ # to avoid nasty assert failed messages.
+-DBody 0x70 u16 l 0x1bc 4,9 a
++DBody 0x70 u16 l 0x1bc 1,9 a
+ check 0x70 u16 g 2
+ 
+ # Experience: From zero to hero
+-Kills 0x1c2 u16 l 1024 5,9 a
++Kills 0x1c2 u16 l 1024 2,9 a
++check 0x70 u16 g 2
++
++# Droids must be fast! Pimp my ride!
++Weight 0x1b4 u32 g 2000 3,9 a
++check 0x70 u16 g 2
++Speed 0x1b8 u32 l 1000 3,9 a
+ check 0x70 u16 g 2
+ 
+ dynmemend
+@@ -51,7 +47,7 @@ dynmemend
+ 
+ dynmemstart Structure 424 0x5dbe4e 0x28
+ 
+-SBody 0x70 u16 l 2000 6,9 a
++SBody 0x70 u16 l 2000 4,9 a
+ check 0x70 u16 g 2
+ 
+ # Player ID 0 structure? (The AI has 6 and 7 in level 1.)
+@@ -65,6 +61,17 @@ adapt_script adapt/warzone2100_adapt64.sh
+ adapt_required 1
+ 
+ 
++# Looks like we have some static values here.
++# Note: We can't adapt these, yet. Do discovery for them!
++
++Power 0x103bf84 i32 l 5000 6 d
++check 0x103bf84 i32 g 10
++
++# Cheaters don't like to be accused to be one. ;-)
++Cheated 0xbc8280 u8 g 0 7 d
++DebugEn 0x1002a30 u8 l 1 8 d
++
++
+ # The bools are easy to discover:
+ # 0. run the game and &quot;scanmem&quot;
+ # 1. start a new campaign
+diff --git a/examples/warzone2100_238-64.conf b/examples/warzone2100_238-64.conf
+index 5de1d4e..41b7ac6 100644
+--- a/examples/warzone2100_238-64.conf
++++ b/examples/warzone2100_238-64.conf
+@@ -3,16 +3,6 @@ warzone2100
+ # Warzone 2100 - Version 2.3.8, Gentoo Linux, 64-bit
+ #
+ # $ ugtrain -P libmemhack64.so examples/warzone2100_238-64
+-#
+-# Looks like we have some static values here.
+-#
+-# Cheaters don't like to be accused to be one. ;-)
+-
+-Cheated 0xc91ba0 u8 g 0 1,9 a
+-DebugEn 0xcfae50 u8 l 1 2,9 a
+-
+-Power 0x1212180 i32 l 5000 3,9 a
+-check 0x1212180 i32 g 10
+ 
+ 
+ # Found the body points of an own MG Viper droid with scanmem
+@@ -26,7 +16,7 @@ check 0x1212180 i32 g 10
+ dynmemstart Droid 1040 0x56c0ba 0x8
+ 
+ # Increase the maximum body points
+-DMaxBody 0x1d4 u16 l 2000 4,9 a
++DMaxBody 0x1d4 u16 l 2000 1,9 a
+ check 0x1d4 u16 g 2
+ check 0x5c u16 g 2
+ 
+@@ -35,11 +25,17 @@ checko 0x40 u8 l 1
+ 
+ # Read the max. 'body' value from 'originalBody' value
+ # to avoid nasty assert failed messages.
+-DBody 0x5c u16 l 0x1d4 4,9 a
++DBody 0x5c u16 l 0x1d4 1,9 a
+ check 0x5c u16 g 2
+ 
+ # Experience: From zero to hero
+-Kills 0x1d8 f32 l 1024.0 5,9 a
++Kills 0x1d8 f32 l 1024.0 2,9 a
++check 0x5c u16 g 2
++
++# Droids must be fast! Pimp my ride!
++Weight 0x1cc u32 g 2000 3,9 a
++check 0x5c u16 g 2
++Speed 0x1d0 u32 l 1000 3,9 a
+ check 0x5c u16 g 2
+ 
+ dynmemend
+@@ -51,7 +47,7 @@ dynmemend
+ 
+ dynmemstart Structure 352 0x56c0aa 0x8
+ 
+-SBody 0x5c u16 l 2000 6,9 a
++SBody 0x5c u16 l 2000 4,9 a
+ check 0x5c u16 g 2
+ 
+ # Player ID 0 structure? (The AI has 6 and 7 in level 1.)
+@@ -65,6 +61,17 @@ adapt_script adapt/warzone2100_adapt64.sh
+ adapt_required 1
+ 
+ 
++# Looks like we have some static values here.
++# Note: We can't adapt these, yet. Do discovery for them!
++
++Power 0x1212180 i32 l 5000 6 d
++check 0x1212180 i32 g 10
++
++# Cheaters don't like to be accused to be one. ;-)
++Cheated 0xc91ba0 u8 g 0 7 d
++DebugEn 0xcfae50 u8 l 1 8 d
++
++
+ # The bools are easy to discover:
+ # 0. run the game and &quot;scanmem&quot;
+ # 1. start a new campaign
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000037.html">[Ugtrain-devel] [PATCH] ugtrain: add '--glc' option for video	recording
+</A></li>
+	<LI>Next message: <A HREF="000039.html">[Ugtrain-devel] [PATCH] doc: introduce dynamic memory doc
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#38">[ date ]</a>
+              <a href="thread.html#38">[ thread ]</a>
+              <a href="subject.html#38">[ subject ]</a>
+              <a href="author.html#38">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

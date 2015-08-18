@@ -1,0 +1,278 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] examples: warzone2100: 64-bit: research and	build droids faster
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-November/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20examples%3A%20warzone2100%3A%2064-bit%3A%20research%20and%0A%09build%20droids%20faster&In-Reply-To=%3C1385809855-5082-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000064.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] examples: warzone2100: 64-bit: research and	build droids faster</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20examples%3A%20warzone2100%3A%2064-bit%3A%20research%20and%0A%09build%20droids%20faster&In-Reply-To=%3C1385809855-5082-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] examples: warzone2100: 64-bit: research and	build droids faster">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Sat Nov 30 12:10:55 CET 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000064.html">[Ugtrain-devel] [PATCH 3/3] examples: warzone2100: 32-bit: research	and build droids faster
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#65">[ date ]</a>
+              <a href="thread.html#65">[ thread ]</a>
+              <a href="subject.html#65">[ subject ]</a>
+              <a href="author.html#65">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Do the same thing as already done for 32-bit.
+
+In the 32-bit config there is a subject pointer watcher used as u64.
+Fix it by using u32.
+
+In 3.1.0 there is no &quot;powerAccrued&quot; for factory or research facility
+any more. They use build points remaining to build instead of time
+remaining to build.
+---
+ examples/warzone2100-64.conf     | 59 +++++++++++++++++++++++++++++++++--
+ examples/warzone2100_238-32.conf |  2 +-
+ examples/warzone2100_238-64.conf | 67 ++++++++++++++++++++++++++++++++++++++--
+ 3 files changed, 121 insertions(+), 7 deletions(-)
+
+diff --git a/examples/warzone2100-64.conf b/examples/warzone2100-64.conf
+index 2cc62c7..1e62c0f 100644
+--- a/examples/warzone2100-64.conf
++++ b/examples/warzone2100-64.conf
+@@ -16,7 +16,7 @@ warzone2100
+ dynmemstart Droid 864 0x4a6c5a 0x28
+ 
+ # Increase the maximum body points
+-DMaxBody 0x1bc u16 l 2000 1,9 a
++DMaxBody 0x1bc u16 l 10000 1,9 a
+ check 0x1bc u16 g 2
+ check 0x70 u16 g 2
+ # Player ID 0 droid? (The AI has 6 and 7 in level 1.)
+@@ -45,6 +45,57 @@ check 0x70 u16 g 2
+ dynmemend
+ 
+ 
++# Structure Stats (pointer target)
++#
++# The size is only important for the dump.
++# Not sure if the size is right (taken from 2.3.8).
++# Pointers aren't contiguous any more.
++# TODO: do pointer-to-heap discovery
++
++ptrmemstart StructStats 160
++
++# Used for checks, don't deactivate!
++SType 0x10 u8 watch
++
++ptrmemend
++
++
++# Structure Functionality (union pointer target)
++#
++# The size is only important for the dump.
++# Not sure if the size is right (taken from 2.3.8).
++# TODO: do pointer-to-heap discovery
++
++ptrmemstart StructFunct 64
++
++# Factory (Type 1)
++
++# Build subject
++FSubjPtr 0x4 u64 watch
++
++# Points remaining to build - Build very fast!
++FPts2Build 0x24 i32 g 0 A a
++check SType u8 e 1
++
++# Use max. build points per production cycle.
++# Only cheated as this is visible.
++FBuildPts 0x3 u8 l 255 A a
++check SType u8 e 1
++
++
++# Research Facility (Type 10)
++
++# Research subject
++RSubjPtr 0x0 u64 watch
++
++# Research points per cycle - Research very fast!
++# This is visible.
++RResPts 0x1c u32 l 65535 B a
++check SType u8 e 10
++
++ptrmemend
++
++
+ # Found the body points of the command station with scanmem
+ # by using 'snapshot', shooting at it, using '&lt;' and '='.
+ # Found out that it has 500 body points initially.
+@@ -52,7 +103,7 @@ dynmemend
+ dynmemstart Structure 424 0x5dbe4e 0x28
+ 
+ # Make structures indestructible
+-SBody 0x70 u16 l 2000 4,9 a
++SBody 0x70 u16 l 10000 4,9 a
+ check 0x70 u16 g 2
+ # Player ID 0 structure?
+ checko 0x22 u8 e 0
+@@ -63,7 +114,9 @@ check 0x70 u16 g 2
+ # Player ID 0 structure?
+ checko 0x22 u8 e 0
+ 
+-SFuncPtr 0xc0 u64 watch
++SStatPtr 0xa8 p StructStats once
++
++SFuncPtr 0xc0 p StructFunct always
+ 
+ dynmemend
+ 
+diff --git a/examples/warzone2100_238-32.conf b/examples/warzone2100_238-32.conf
+index cd89ce1..bd0414a 100644
+--- a/examples/warzone2100_238-32.conf
++++ b/examples/warzone2100_238-32.conf
+@@ -90,7 +90,7 @@ check SType u8 e 1
+ # Research Facility (Type 10)
+ 
+ # Research subject
+-RSubjPtr 0x0 u64 watch
++RSubjPtr 0x0 u32 watch
+ 
+ # Research points per cycle - Research very fast!
+ # This is visible.
+diff --git a/examples/warzone2100_238-64.conf b/examples/warzone2100_238-64.conf
+index a3ac3e1..5abab6c 100644
+--- a/examples/warzone2100_238-64.conf
++++ b/examples/warzone2100_238-64.conf
+@@ -16,7 +16,7 @@ warzone2100
+ dynmemstart Droid 1040 0x56c0ba 0x8
+ 
+ # Increase the maximum body points
+-DMaxBody 0x1d4 u16 l 2000 1,9 a
++DMaxBody 0x1d4 u16 l 10000 1,9 a
+ check 0x1d4 u16 g 2
+ check 0x5c u16 g 2
+ # Player ID 0 droid? (The AI has 6 and 7 in level 1.)
+@@ -45,6 +45,65 @@ check 0x5c u16 g 2
+ dynmemend
+ 
+ 
++# Structure Stats (pointer target)
++#
++# The size is only important for the dump.
++# But we know it from watching the pointers.
++# There is a big allocation for all structure
++# stats at once. They are contiguous in memory.
++
++ptrmemstart StructStats 160
++
++# Used for checks, don't deactivate!
++SType 0x10 u8 watch
++
++ptrmemend
++
++
++# Structure Functionality (union pointer target)
++#
++# The size is only important for the dump.
++# But we know it from pointer-to-heap
++# discovery. This is allocated with calloc().
++
++ptrmemstart StructFunct 64
++
++# Factory (Type 1)
++
++# Build subject
++FSubjPtr 0x8 u64 watch
++
++# Time to build - Build very fast!
++FBuildTime 0x14 u32 g 0 A a
++check SType u8 e 1
++
++# Use max. build points per production cycle.
++# Only cheated as this is visible.
++FBuildPts 0x3 u8 l 255 A a
++check SType u8 e 1
++
++# Power accrued - Build even faster!
++FPowerPts 0x4 u32 l 2000 B a
++check SType u8 e 1
++
++
++# Research Facility (Type 10)
++
++# Research subject
++RSubjPtr 0x0 u64 watch
++
++# Research points per cycle - Research very fast!
++# This is visible.
++RResPts 0x10 u32 l 65535 C a
++check SType u8 e 10
++
++# Power accrued - Research even faster!
++RPowerPts 0x20 u32 l 2000 D a
++check SType u8 e 10
++
++ptrmemend
++
++
+ # Found the body points of the command station with scanmem
+ # by using 'snapshot', shooting at it, using '&lt;' and '='.
+ # Found out that it has 500 body points initially.
+@@ -52,7 +111,7 @@ dynmemend
+ dynmemstart Structure 352 0x56c0aa 0x8
+ 
+ # Make structures indestructible
+-SBody 0x5c u16 l 2000 4,9 a
++SBody 0x5c u16 l 10000 4,9 a
+ check 0x5c u16 g 2
+ # Player ID 0 structure?
+ checko 0x40 u8 e 0
+@@ -63,7 +122,9 @@ check 0x5c u16 g 2
+ # Player ID 0 structure?
+ checko 0x40 u8 e 0
+ 
+-SFuncPtr 0xd8 u64 watch
++SStatPtr 0xc0 p StructStats once
++
++SFuncPtr 0xd8 p StructFunct always
+ 
+ dynmemend
+ 
+-- 
+1.8.1.5
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000064.html">[Ugtrain-devel] [PATCH 3/3] examples: warzone2100: 32-bit: research	and build droids faster
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#65">[ date ]</a>
+              <a href="thread.html#65">[ thread ]</a>
+              <a href="subject.html#65">[ subject ]</a>
+              <a href="author.html#65">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

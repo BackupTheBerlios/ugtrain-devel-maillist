@@ -1,0 +1,325 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH V2] ugtrain,	system: Introduce pid_is_running() function
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-November/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%20V2%5D%20ugtrain%2C%0A%09system%3A%20Introduce%20pid_is_running%28%29%20function&In-Reply-To=%3C1384292503-21733-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000051.html">
+   <LINK REL="Next"  HREF="000053.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH V2] ugtrain,	system: Introduce pid_is_running() function</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%20V2%5D%20ugtrain%2C%0A%09system%3A%20Introduce%20pid_is_running%28%29%20function&In-Reply-To=%3C1384292503-21733-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH V2] ugtrain,	system: Introduce pid_is_running() function">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Tue Nov 12 22:41:42 CET 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000051.html">[Ugtrain-devel] [PATCH] ugtrain,	system: Introduce pid_is_running() function
+</A></li>
+        <LI>Next message: <A HREF="000053.html">[Ugtrain-devel] [PATCH] discovery: stage 5: use pid_is_running()	function
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#52">[ date ]</a>
+              <a href="thread.html#52">[ thread ]</a>
+              <a href="subject.html#52">[ subject ]</a>
+              <a href="author.html#52">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>In ugtrain there is only a single process we really have to care
+for and that is the game process. If we have no orphans, then we can
+check if it is running with non-hanging wait (waitpid() option
+WNOHANG). We use it now if the ptrace()-based memory attaching fails
+or if all configs are disabled where we don't attach memory.
+This helps us returning in time, returning the correct value upon
+game exit and not bugging the user with a ptrace attach error message.
+
+But in order to check if the game process is really running including
+orphans, we check PID and process name in /proc directly. We open the
+directory /proc/&lt;pid&gt;, read /proc/&lt;pid&gt;/exe and /proc/&lt;pid&gt;/status
+for that. Sed extracts the state for us. This is faster and more
+flexible than ps-grep magic. We handle zombies as if the process is
+not running.
+---
+ src/system.h    |   26 ++++++++++---------
+ src/system_l.c  |   78 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/system_w.c  |    5 ++++
+ src/ugtrain.cpp |   24 +++++++++--------
+ 4 files changed, 110 insertions(+), 23 deletions(-)
+
+diff --git a/src/system.h b/src/system.h
+index 9ffb1ab..774a428 100644
+--- a/src/system.h
++++ b/src/system.h
+@@ -23,18 +23,6 @@
+ #include &lt;windows.h&gt;
+ #endif
+ 
+-#ifdef __linux__
+-static inline u32 sleep_sec (u32 sec)
+-{
+-	return sleep(sec);
+-}
+-#else
+-static inline void sleep_sec (u32 sec)
+-{
+-	Sleep(sec * 1000);
+-}
+-#endif
+-
+ 
+ #ifdef __cplusplus
+ extern &quot;C&quot; {
+@@ -49,6 +37,7 @@ extern &quot;C&quot; {
+ 			     const char *ccmd, char *const ccmdv[],
+ 			     char *const pid_cmd, char *proc_name,
+ 			     u32 delay, bool do_wait, bool use_shell);
++	bool    pid_is_running (pid_t pid, char *proc_name, bool use_wait);
+ 	pid_t   fork_proc (void (*task) (void *), void *argp);
+ 	void    kill_proc (pid_t pid);
+ 	void    wait_proc (pid_t pid);
+@@ -56,4 +45,17 @@ extern &quot;C&quot; {
+ };
+ #endif
+ 
++/* Inline functions */
++#ifdef __linux__
++static inline u32 sleep_sec (u32 sec)
++{
++	return sleep(sec);
++}
++#else
++static inline void sleep_sec (u32 sec)
++{
++	Sleep(sec * 1000);
++}
++#endif
++
+ #endif
+diff --git a/src/system_l.c b/src/system_l.c
+index d3f2b77..9ebf58d 100644
+--- a/src/system_l.c
++++ b/src/system_l.c
+@@ -22,6 +22,9 @@
+ #include &lt;string.h&gt;
+ #include &lt;limits.h&gt;
+ #include &lt;signal.h&gt;
++#include &lt;dirent.h&gt;
++#include &lt;libgen.h&gt;
++#include &lt;errno.h&gt;
+ #include &lt;sys/wait.h&gt;
+ #include &quot;common.h&quot;
+ #include &quot;system.h&quot;
+@@ -69,6 +72,81 @@ err:
+ }
+ 
+ /*
++ * If requested, we detect if a child process is running
++ * with the waitpid() option WNOHANG.
++ *
++ * Otherwise, we check if a process is running in /proc directly
++ * and we handle zombies as if the process is not running.
++ *
++ * Assumption: (pid &gt; 0)  --&gt; Please check your PID before!
++ */
++bool pid_is_running (pid_t pid, char *proc_name, bool use_wait)
++{
++	char pbuf[PIPE_BUF] = { 0 };
++	i32 status;
++	DIR *dir;
++	const char *cmd;
++	char *pname;
++	char cmd_str[1024] = &quot;/proc/&quot;;
++	i32 pr_len, cmd_len = sizeof(&quot;/proc/&quot;) - 1;
++
++	if (use_wait) {
++		if (waitpid(pid, &amp;status, WNOHANG|WUNTRACED|WCONTINUED) != pid)
++			return true;
++		return !(WIFEXITED(status) || WIFSIGNALED(status));
++	}
++
++	/* append pid and check if dir exists */
++	pr_len = sprintf((cmd_str + cmd_len), &quot;%d&quot;, pid);
++	if (pr_len &lt;= 0)
++		goto err;
++	cmd_len += pr_len;
++	dir = opendir(cmd_str);
++	if (!dir)
++		return (errno == ENOENT) ? false : true;
++	else
++		closedir(dir);
++
++	/* check process name from 'exe' symlink */
++	pr_len = sprintf((cmd_str + cmd_len), &quot;/exe&quot;);
++	if (pr_len &lt;= 0)
++		goto err;
++	if (readlink(cmd_str, pbuf, sizeof(pbuf)) &lt;= 0)
++		goto skip_exe_check;  /* skip for zombies */
++	pname = basename(pbuf);
++	if (!pname)
++		goto err;
++	if (strcmp(pname, proc_name) != 0)
++		return false;
++
++skip_exe_check:
++	/* remove '/exe', insert 'cat ', append '/status' + shell cmds */
++	memset(cmd_str + cmd_len, 0, pr_len);
++	pr_len = sizeof(&quot;cat &quot;) - 1;
++	memmove(cmd_str + pr_len, cmd_str, cmd_len);
++	pr_len = sprintf(cmd_str, &quot;cat %s&quot;, (cmd_str + pr_len));
++	if (pr_len &lt;= 0)
++		goto err;
++	cmd_len = pr_len;
++	pr_len = sprintf((cmd_str + cmd_len),
++		&quot;/status | sed -n 2p | sed \'s/State:	//g\'&quot;);
++	if (pr_len &lt;= 0)
++		goto err;
++	cmd = cmd_str;
++
++	/* reset pipe buffer and run the shell cmd */
++	memset(pbuf, 0, sizeof(pbuf));
++	if (run_cmd_pipe(cmd, NULL, pbuf, sizeof(pbuf), true) &lt;= 0)
++		goto err;
++
++	/* zombies are not running - parent doesn't wait */
++	if (pbuf[0] == 'Z')
++		return false;
++err:
++	return true;  /* In error case we expect the process still running. */
++}
++
++/*
+  * This is highly specific to bypass OS security.
+  *
+  * E.g. ptrace() requires root for processes not running
+diff --git a/src/system_w.c b/src/system_w.c
+index 9dee137..5a172d2 100644
+--- a/src/system_w.c
++++ b/src/system_w.c
+@@ -44,6 +44,11 @@ pid_t fork_proc (void (*task) (void *), void *argp)
+ 	return -1;
+ }
+ 
++bool pid_is_running (pid_t pid, char *proc_name, bool use_wait)
++{
++	return true;
++}
++
+ pid_t run_pgrp_bg (const char *pcmd, char *const pcmdv[],
+ 		   const char *ccmd, char *const ccmdv[],
+ 		   char *const pid_str, char *proc_name,
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index cadbde0..1d9767a 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -472,13 +472,10 @@ static void change_memory (pid_t pid, CfgEntry *cfg_en, u8 *buf,
+  * to do that here in an equal hacky way as the process
+  * belongs to init.
+  */
+-static void catch_orphan (char *proc_name)
++static void wait_orphan (pid_t pid, char *proc_name)
+ {
+-	pid_t pid;
+-
+-	while (1) {
+-		pid = proc_to_pid(proc_name);
+-		if (pid &lt; 0)
++	while (true) {
++		if (!pid_is_running(pid, proc_name, false))
+ 			return;
+ 		sleep_sec(1);
+ 	}
+@@ -1114,7 +1111,7 @@ prepare_dynmem:
+ 			if (opt.scanmem_pid &gt; 0) {
+ 				wait_proc(opt.scanmem_pid);
+ 				// Have you closed scanmem before the game?
+-				catch_orphan(opt.proc_name);
++				wait_orphan(pid, opt.proc_name);
+ 			} else {
+ 				wait_proc(pid);
+ 			}
+@@ -1124,7 +1121,7 @@ prepare_dynmem:
+ 			if (opt.scanmem_pid &gt; 0) {
+ 				wait_proc(opt.scanmem_pid);
+ 				// Have you closed scanmem before the game?
+-				catch_orphan(opt.proc_name);
++				wait_orphan(pid, opt.proc_name);
+ 			} else {
+ 				wait_proc(pid);
+ 			}
+@@ -1149,7 +1146,7 @@ prepare_dynmem:
+ 	} else if (opt.scanmem_pid &gt; 0) {
+ 		wait_proc(opt.scanmem_pid);
+ 		// Have you closed scanmem before the game?
+-		catch_orphan(opt.proc_name);
++		wait_orphan(pid, opt.proc_name);
+ 		return 0;
+ 	}
+ 
+@@ -1163,7 +1160,7 @@ prepare_dynmem:
+ 		return -1;
+ 	}
+ 
+-	while (1) {
++	while (true) {
+ 		sleep_sec(1);
+ 		ch = do_getch();
+ 		if (ch &gt; 0) {
+@@ -1200,8 +1197,11 @@ prepare_dynmem:
+ 			}
+ 		}
+ 
+-		if (cfg_act-&gt;empty())
++		if (cfg_act-&gt;empty()) {
++			if (!pid_is_running(pid, opt.proc_name, true))
++				return 0;
+ 			continue;
++		}
+ 
+ 		// allocate old values per memory object
+ 		for (it = cfg_act-&gt;begin(); it != cfg_act-&gt;end(); it++) {
+@@ -1217,6 +1217,8 @@ prepare_dynmem:
+ 		}
+ 
+ 		if (memattach(pid) != 0) {
++			if (!pid_is_running(pid, opt.proc_name, true))
++				return 0;
+ 			cerr &lt;&lt; &quot;PTRACE ATTACH ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
+ 			return -1;
+ 		}
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000051.html">[Ugtrain-devel] [PATCH] ugtrain,	system: Introduce pid_is_running() function
+</A></li>
+	<LI>Next message: <A HREF="000053.html">[Ugtrain-devel] [PATCH] discovery: stage 5: use pid_is_running()	function
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#52">[ date ]</a>
+              <a href="thread.html#52">[ thread ]</a>
+              <a href="subject.html#52">[ subject ]</a>
+              <a href="author.html#52">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

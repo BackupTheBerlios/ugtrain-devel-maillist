@@ -1,0 +1,149 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] discovery: simplify ptr-to-heap discovery
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2014-January/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20discovery%3A%20simplify%20ptr-to-heap%20discovery&In-Reply-To=%3C1390512429-29854-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000092.html">
+   <LINK REL="Next"  HREF="000094.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] discovery: simplify ptr-to-heap discovery</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20discovery%3A%20simplify%20ptr-to-heap%20discovery&In-Reply-To=%3C1390512429-29854-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] discovery: simplify ptr-to-heap discovery">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Thu Jan 23 22:27:09 CET 2014</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000092.html">[Ugtrain-devel] [PATCH] linuxhooking: fix calloc crash and prevent	recursion
+</A></li>
+        <LI>Next message: <A HREF="000094.html">[Ugtrain-devel] [PATCH] examples: warzone2100: update ptrmem sizes
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#93">[ date ]</a>
+              <a href="thread.html#93">[ thread ]</a>
+              <a href="subject.html#93">[ subject ]</a>
+              <a href="author.html#93">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>The little helpers for auto-completing the libmemdisc config should
+be available for ptr-to-heap discovery as well. So rework and unify
+this handling.
+---
+ src/discovery.cpp |   27 +++++++++++++++------------
+ 1 file changed, 15 insertions(+), 12 deletions(-)
+
+diff --git a/src/discovery.cpp b/src/discovery.cpp
+index 045b210..f640dfc 100644
+--- a/src/discovery.cpp
++++ b/src/discovery.cpp
+@@ -366,7 +366,7 @@ void run_stage1234_loop (void *argp)
+ i32 prepare_discovery (struct app_options *opt, list&lt;CfgEntry&gt; *cfg)
+ {
+ 	string disc_str, cmd_str;
+-	char *iptr;
++	char *iptr, *main_part;
+ 	i32 i, ret, ioffs = 0;
+ 	list&lt;CfgEntry&gt;::iterator it;
+ 	void *heap_soffs, *heap_eoffs, *bt_saddr, *bt_eaddr;
+@@ -378,42 +378,44 @@ i32 prepare_discovery (struct app_options *opt, list&lt;CfgEntry&gt; *cfg)
+ 	if (!opt-&gt;disc_str)
+ 		return 0;
+ 
+-	switch (opt-&gt;disc_str[0]) {
+-	case 'p':
++	if (opt-&gt;disc_str[0] == 'p') {
+ 		iptr = strstr(opt-&gt;disc_str, &quot;;;&quot;);
+ 		if (!iptr)
+ 			goto err;
+ 		opt-&gt;disc_offs = iptr - opt-&gt;disc_str + 2;
+-		cout &lt;&lt; &quot;disc_str: &quot; &lt;&lt; opt-&gt;disc_str &lt;&lt; endl;
+-		break;
++	}
++
++	main_part = opt-&gt;disc_str + opt-&gt;disc_offs;
++	switch (main_part[0]) {
+ 	case '0':
+ 		// just get stack end and heap start
+ 		opt-&gt;disc_str = (char *) &quot;0&quot;;
++		opt-&gt;disc_offs = 0;
+ 		break;
+ 	case '1':
+ 	case '2':
+-		if (strlen(opt-&gt;disc_str) == 1) {
+-			disc_str = opt-&gt;disc_str[0];
++		if (strlen(main_part) == 1) {
++			disc_str = opt-&gt;disc_str;
+ 			disc_str += &quot;;0x0;0x0;0&quot;;
+ 			opt-&gt;disc_str = to_c_str(&amp;disc_str);
+ 		}
+ 		cout &lt;&lt; &quot;disc_str: &quot; &lt;&lt; opt-&gt;disc_str &lt;&lt; endl;
+ 		break;
+ 	case '3':
+-		ret = sscanf(&amp;opt-&gt;disc_str[1], &quot;;%3s;&quot;, gbt_buf);
++		ret = sscanf(&amp;main_part[1], &quot;;%3s;&quot;, gbt_buf);
+ 		if (ret == 1 &amp;&amp;
+ 		    strncmp(gbt_buf, GBT_CMD, sizeof(GBT_CMD) - 1) == 0) {
+ 			use_gbt = true;
+ 			ioffs = sizeof(GBT_CMD);
+ 		}
+ 	case '4':
+-		ret = sscanf(&amp;opt-&gt;disc_str[1] + ioffs, &quot;;%p;%p;%lu;%p;%p&quot;,
++		ret = sscanf(&amp;main_part[1] + ioffs, &quot;;%p;%p;%lu;%p;%p&quot;,
+ 			     &amp;heap_soffs, &amp;heap_eoffs, &amp;mem_size, &amp;bt_saddr,
+ 			     &amp;bt_eaddr);
+ 		if (ret &lt; 3) {
+ 			cerr &lt;&lt; &quot;Error: Not enough arguments for discovery &quot;
+-				&quot;stage &quot; &lt;&lt; opt-&gt;disc_str[0] &lt;&lt; &quot;!&quot; &lt;&lt; endl;
+-			cerr &lt;&lt; &quot;Use at least \'&quot; &lt;&lt; opt-&gt;disc_str[0]
++				&quot;stage &quot; &lt;&lt; main_part[0] &lt;&lt; &quot;!&quot; &lt;&lt; endl;
++			cerr &lt;&lt; &quot;Use at least \'&quot; &lt;&lt; main_part[0]
+ 			     &lt;&lt; &quot;;0x0;0x0;&lt;size&gt;\'&quot; &lt;&lt; endl;
+ 			goto err;
+ 		}
+@@ -434,7 +436,8 @@ i32 prepare_discovery (struct app_options *opt, list&lt;CfgEntry&gt; *cfg)
+ 			if (sscanf(pbuf, &quot;%p\n%p&quot;, &amp;bt_saddr, &amp;bt_eaddr) != 2) {
+ 				goto err;
+ 			} else {
+-				disc_str = opt-&gt;disc_str[0];
++				main_part[1] = '\0';
++				disc_str = opt-&gt;disc_str;
+ 				if (use_gbt)
+ 					disc_str += &quot;;&quot; GBT_CMD &quot;;&quot;;
+ 				else
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000092.html">[Ugtrain-devel] [PATCH] linuxhooking: fix calloc crash and prevent	recursion
+</A></li>
+	<LI>Next message: <A HREF="000094.html">[Ugtrain-devel] [PATCH] examples: warzone2100: update ptrmem sizes
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#93">[ date ]</a>
+              <a href="thread.html#93">[ thread ]</a>
+              <a href="subject.html#93">[ subject ]</a>
+              <a href="author.html#93">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

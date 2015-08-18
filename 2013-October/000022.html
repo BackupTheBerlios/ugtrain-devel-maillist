@@ -1,0 +1,120 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 4/4] examples: warzone2100: do minor	improvements
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-October/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%204/4%5D%20examples%3A%20warzone2100%3A%20do%20minor%0A%09improvements&In-Reply-To=%3C1380885648-7237-4-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000021.html">
+   <LINK REL="Next"  HREF="000023.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 4/4] examples: warzone2100: do minor	improvements</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%204/4%5D%20examples%3A%20warzone2100%3A%20do%20minor%0A%09improvements&In-Reply-To=%3C1380885648-7237-4-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 4/4] examples: warzone2100: do minor	improvements">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Fri Oct  4 13:20:48 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000021.html">[Ugtrain-devel] [PATCH 3/4] examples: do minor improvements
+</A></li>
+        <LI>Next message: <A HREF="000023.html">[Ugtrain-devel] [PATCH] ugtrain: print a headline per dynmem class
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#22">[ date ]</a>
+              <a href="thread.html#22">[ thread ]</a>
+              <a href="subject.html#22">[ subject ]</a>
+              <a href="author.html#22">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>---
+ examples/warzone2100-32.conf |  7 ++++---
+ examples/warzone2100-64.conf | 10 +++++++---
+ 2 files changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/examples/warzone2100-32.conf b/examples/warzone2100-32.conf
+index 781a255..db04ad0 100644
+--- a/examples/warzone2100-32.conf
++++ b/examples/warzone2100-32.conf
+@@ -20,14 +20,15 @@ check 0x8aa24c0 i32 g 10
+ # Found out that it has 205 body points initially.
+ 
+ # The game starts with 47 droids of which only 7 are our
+-# own droids. The tool ugsimfind is very useful here.
++# own droids. The memory object dump ('&gt;' key during run)
++# and the tool ugsimfind are very useful here.
+ 
+ dynmemstart Droid 876 0x813ce6a 0x2584
+ 
+-# Loading droids from a savegame has another stack offset
++# Loading droids from a savegame
+ dynmemstack 0x2e14
+ 
+-# Building a droid has another stack offset.
++# Building a droid
+ dynmemstack 0x23f4
+ 
+ # Increase the maximum body points
+diff --git a/examples/warzone2100-64.conf b/examples/warzone2100-64.conf
+index 66ed010..ed9d7fb 100644
+--- a/examples/warzone2100-64.conf
++++ b/examples/warzone2100-64.conf
+@@ -20,16 +20,20 @@ check 0x103bf84 i32 g 10
+ # Found out that it has 205 body points initially.
+ 
+ # The game starts with 47 droids of which only 7 are our
+-# own droids. The tool ugsimfind is very useful here.
++# own droids. The memory object dump ('&gt;' key during run)
++# and the tool ugsimfind are very useful here.
+ 
+ dynmemstart Droid 864 0x4a6c5a 0x4088
+ 
+-# Loading droids from a savegame has another stack offset
++# Loading droids from a savegame
+ dynmemstack 0x5098
+ 
+-# Building a droid has another stack offset.
++# Building a droid
+ dynmemstack 0x3b18
+ 
++# Multiplayer mission start
++dynmemstack 0x4fe8
++
+ # Increase the maximum body points
+ DMaxBody 0x1bc u16 l 2000 4,9 a
+ check 0x1bc u16 g 2
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000021.html">[Ugtrain-devel] [PATCH 3/4] examples: do minor improvements
+</A></li>
+	<LI>Next message: <A HREF="000023.html">[Ugtrain-devel] [PATCH] ugtrain: print a headline per dynmem class
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#22">[ date ]</a>
+              <a href="thread.html#22">[ thread ]</a>
+              <a href="subject.html#22">[ subject ]</a>
+              <a href="author.html#22">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

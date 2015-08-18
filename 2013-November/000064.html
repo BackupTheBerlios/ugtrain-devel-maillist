@@ -1,0 +1,192 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 3/3] examples: warzone2100: 32-bit: research	and build droids faster
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-November/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%203/3%5D%20examples%3A%20warzone2100%3A%2032-bit%3A%20research%0A%09and%20build%20droids%20faster&In-Reply-To=%3C1385716038-9745-4-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000063.html">
+   <LINK REL="Next"  HREF="000065.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 3/3] examples: warzone2100: 32-bit: research	and build droids faster</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%203/3%5D%20examples%3A%20warzone2100%3A%2032-bit%3A%20research%0A%09and%20build%20droids%20faster&In-Reply-To=%3C1385716038-9745-4-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 3/3] examples: warzone2100: 32-bit: research	and build droids faster">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Fri Nov 29 10:07:18 CET 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000063.html">[Ugtrain-devel] [PATCH 2/3] ugtrain: introduce check from reference
+</A></li>
+        <LI>Next message: <A HREF="000065.html">[Ugtrain-devel] [PATCH] examples: warzone2100: 64-bit: research and	build droids faster
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#64">[ date ]</a>
+              <a href="thread.html#64">[ thread ]</a>
+              <a href="subject.html#64">[ subject ]</a>
+              <a href="author.html#64">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Let's use the cool new features: pointer-to-heap discovery,
+calloc() hooking, pointer following and checks with a config value
+reference.
+
+Inspired by &quot;RusHACK Super Cheat Warzone 2100&quot;:
+<A HREF="http://www.youtube.com/watch?v=RHCI7pEJB9g">http://www.youtube.com/watch?v=RHCI7pEJB9g</A>
+
+They cheat:
+RESEARCH_FACILITY.researchPoints, FACTORY.productionOutput
+... so do we to research and build faster.
+
+We also cheat:
+RESEARCH_FACILITY.powerAccrued, FACTORY.powerAccrued,
+FACTORY.timeToBuild
+... to be even faster than that. :-p
+
+Our trainer source and trainer configs are open! We even build
+Structures faster as we cheat STRUCTURE.currentBuildPts directly.
+They cheat DROID.actionPoints for Droid type DROID_CONSTRUCT
+instead. We fight with indestructible hero Droids. Their Droids
+take damage and have no experience (shooting less precisely).
+
+This patch increases the body points of Droids and Structures even
+more (from 2,000 to 10,000) as Droids with a *PLASMA GUN* tend to
+kill themselves on short distance. ;-)
+---
+ examples/warzone2100_238-32.conf |   67 ++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 64 insertions(+), 3 deletions(-)
+
+diff --git a/examples/warzone2100_238-32.conf b/examples/warzone2100_238-32.conf
+index d0ce30a..cd89ce1 100644
+--- a/examples/warzone2100_238-32.conf
++++ b/examples/warzone2100_238-32.conf
+@@ -16,7 +16,7 @@ warzone2100
+ dynmemstart Droid 876 0x813ce6a 0x4
+ 
+ # Increase the maximum body points
+-DMaxBody 0x1c0 u16 l 2000 1,9 a
++DMaxBody 0x1c0 u16 l 10000 1,9 a
+ check 0x1c0 u16 g 2
+ check 0x50 u16 g 2
+ # Player ID 0 droid? (The AI has 6 and 7 in level 1.)
+@@ -45,6 +45,65 @@ check 0x50 u16 g 2
+ dynmemend
+ 
+ 
++# Structure Stats (pointer target)
++#
++# The size is only important for the dump.
++# But we know it from watching the pointers.
++# There is a big allocation for all structure
++# stats at once. They are contiguous in memory.
++
++ptrmemstart StructStats 116
++
++# Used for checks, don't deactivate!
++SType 0x8 u8 watch
++
++ptrmemend
++
++
++# Structure Functionality (union pointer target)
++#
++# The size is only important for the dump.
++# But we know it from pointer-to-heap
++# discovery. This is allocated with calloc().
++
++ptrmemstart StructFunct 36
++
++# Factory (Type 1)
++
++# Build subject
++FSubjPtr 0x8 u32 watch
++
++# Time to build - Build very fast!
++FBuildTime 0x10 u32 g 0 A a
++check SType u8 e 1
++
++# Use max. build points per production cycle.
++# Only cheated as this is visible.
++FBuildPts 0x3 u8 l 255 A a
++check SType u8 e 1
++
++# Power accrued - Build even faster!
++FPowerPts 0x4 u32 l 2000 B a
++check SType u8 e 1
++
++
++# Research Facility (Type 10)
++
++# Research subject
++RSubjPtr 0x0 u64 watch
++
++# Research points per cycle - Research very fast!
++# This is visible.
++RResPts 0xc u32 l 65535 C a
++check SType u8 e 10
++
++# Power accrued - Research even faster!
++RPowerPts 0x18 u32 l 2000 D a
++check SType u8 e 10
++
++ptrmemend
++
++
+ # Found the body points of the command station with scanmem
+ # by using 'snapshot', shooting at it, using '&lt;' and '='.
+ # Found out that it has 500 body points initially.
+@@ -52,7 +111,7 @@ dynmemend
+ dynmemstart Structure 296 0x813d90a 0x4
+ 
+ # Make structures indestructible
+-SBody 0x50 u16 l 2000 4,9 a
++SBody 0x50 u16 l 10000 4,9 a
+ check 0x50 u16 g 2
+ # Player ID 0 structure?
+ checko 0x34 u8 e 0
+@@ -63,7 +122,9 @@ check 0x50 u16 g 2
+ # Player ID 0 structure?
+ checko 0x34 u8 e 0
+ 
+-SFuncPtr 0xbc u32 watch
++SStatPtr 0xac p StructStats once
++
++SFuncPtr 0xbc p StructFunct always
+ 
+ dynmemend
+ 
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000063.html">[Ugtrain-devel] [PATCH 2/3] ugtrain: introduce check from reference
+</A></li>
+	<LI>Next message: <A HREF="000065.html">[Ugtrain-devel] [PATCH] examples: warzone2100: 64-bit: research and	build droids faster
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#64">[ date ]</a>
+              <a href="thread.html#64">[ thread ]</a>
+              <a href="subject.html#64">[ subject ]</a>
+              <a href="author.html#64">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

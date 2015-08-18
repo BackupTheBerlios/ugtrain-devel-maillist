@@ -1,0 +1,212 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain: introduce 'game_call' support
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2014-February/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20introduce%20%27game_call%27%20support&In-Reply-To=%3C1391725270-24913-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000100.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain: introduce 'game_call' support</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20introduce%20%27game_call%27%20support&In-Reply-To=%3C1391725270-24913-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain: introduce 'game_call' support">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Thu Feb  6 23:21:09 CET 2014</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000100.html">[Ugtrain-devel] [PATCH] ugtrain: introduce 'game_params' support
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#99">[ date ]</a>
+              <a href="thread.html#99">[ thread ]</a>
+              <a href="subject.html#99">[ subject ]</a>
+              <a href="author.html#99">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>There are games which are called by a shell script. So process name
+and game call differ from each other. With this support static
+memory cheating is still possible. But adaption and dynamic memory
+cheating won't work this way. For that the direct binary call is
+required.
+
+Example: 'sauerbraten' calls 'sauer_client'
+---
+ src/cfgparser.cpp |   17 ++++++++++++++++-
+ src/options.c     |    1 +
+ src/options.h     |    1 +
+ src/ugtrain.cpp   |   11 ++++++-----
+ 4 files changed, 24 insertions(+), 6 deletions(-)
+
+diff --git a/src/cfgparser.cpp b/src/cfgparser.cpp
+index c9eb5b2..010cfcc 100644
+--- a/src/cfgparser.cpp
++++ b/src/cfgparser.cpp
+@@ -28,6 +28,7 @@ using namespace std;
+ 
+ typedef enum {
+ 	NAME_GAME_PATH,
++	NAME_GAME_CALL,
+ 	NAME_USE_GBT,
+ 	NAME_REGULAR,
+ 	NAME_CHECK,
+@@ -160,6 +161,8 @@ static string parse_value_name (string *line, u32 lnr, u32 *start,
+ 	} else if (ret.substr(0, 5) == &quot;game_&quot;) {
+ 		if (ret.substr(5, string::npos) == &quot;path&quot;)
+ 			*name_type = NAME_GAME_PATH;
++		else if (ret.substr(5, string::npos) == &quot;call&quot;)
++			*name_type = NAME_GAME_CALL;
+ 		else
+ 			*name_type = NAME_REGULAR;
+ 	} else if (ret == &quot;use_gbt&quot;) {
+@@ -453,6 +456,7 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 
+ 	// parse config
+ 	opt-&gt;proc_name = parse_proc_name(&amp;lines-&gt;at(0), &amp;start);
++	opt-&gt;game_call = opt-&gt;proc_name;
+ 
+ 	for (lnr = 1; lnr &lt; lines-&gt;size(); lnr++) {
+ 		line = lines-&gt;at(lnr);
+@@ -565,13 +569,24 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			pos = tmp_str.rfind(&quot;/&quot;);
+ 			if (pos != string::npos &amp;&amp;
+ 			    tmp_str.substr(pos + 1, string::npos) !=
+-			    opt-&gt;proc_name)
++			    opt-&gt;game_call)
+ 				cfg_parse_err(&amp;line, lnr, start);
+ 
+ 			// Copy into C string
+ 			opt-&gt;game_path = to_c_str(&amp;tmp_str);
+ 			break;
+ 
++		case NAME_GAME_CALL:
++			if (in_dynmem || in_ptrmem)
++				cfg_parse_err(&amp;line, lnr, start);
++
++			tmp_str = parse_value_name(&amp;line,
++				  lnr, &amp;start, NULL);
++
++			// Copy into C string
++			opt-&gt;game_call = to_c_str(&amp;tmp_str);
++			break;
++
+ 		case NAME_USE_GBT:
+ 			if (in_dynmem || in_ptrmem)
+ 				cfg_parse_err(&amp;line, lnr, start);
+diff --git a/src/options.c b/src/options.c
+index 1475ffc..003dba5 100644
+--- a/src/options.c
++++ b/src/options.c
+@@ -113,6 +113,7 @@ static void init_options (struct app_options *opt)
+ 	/* no direct CLI input */
+ 	opt-&gt;home = NULL;
+ 	opt-&gt;proc_name = NULL;
++	opt-&gt;game_call = NULL;
+ 	opt-&gt;game_path = NULL;
+ 	opt-&gt;adp_script = NULL;
+ 	opt-&gt;adp_required = false;
+diff --git a/src/options.h b/src/options.h
+index c0cefa9..c6e9e9a 100644
+--- a/src/options.h
++++ b/src/options.h
+@@ -38,6 +38,7 @@ struct app_options {
+ 	char	*adp_script;
+ 	char	*home;
+ 	char	*proc_name;
++	char	*game_call;
+ 	char	*game_path;
+ 	bool	use_gbt;
+ 	size_t	disc_offs;
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index 460898e..9aa0bdb 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -423,7 +423,7 @@ static i32 run_game (struct app_options *opt)
+ 			     &lt;&lt; &quot;$ &quot; &lt;&lt; cmdv[0] &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
+ 
+ 			pid = run_pgrp_bg(pcmd, pcmdv, cmd, cmdv,
+-					  pid_str, opt-&gt;proc_name, 3,
++					  pid_str, opt-&gt;game_call, 3,
+ 					  false, false);
+ 			if (pid &gt; 0)
+ 				opt-&gt;scanmem_pid = pid;
+@@ -456,7 +456,7 @@ static i32 run_game (struct app_options *opt)
+ 			     &lt;&lt; &quot;$ &quot; &lt;&lt; cmd &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
+ 
+ 			pid = run_pgrp_bg(pcmd, pcmdv, cmd, cmdv,
+-					  pid_str, opt-&gt;proc_name, 3,
++					  pid_str, opt-&gt;game_call, 3,
+ 					  false, true);
+ 			if (pid &gt; 0)
+ 				opt-&gt;scanmem_pid = pid;
+@@ -508,7 +508,7 @@ static i32 run_preloader (struct app_options *opt)
+ 			     &lt;&lt; &quot; &quot; &lt;&lt; cmdv[2] &lt;&lt;&quot; &amp;&quot; &lt;&lt; endl;
+ 
+ 			pid = run_pgrp_bg(pcmd, pcmdv, cmd, cmdv,
+-					  pid_str, opt-&gt;proc_name, 3,
++					  pid_str, opt-&gt;game_call, 3,
+ 					  false, false);
+ 			if (pid &gt; 0)
+ 				opt-&gt;scanmem_pid = pid;
+@@ -547,7 +547,7 @@ static i32 run_preloader (struct app_options *opt)
+ 			     &lt;&lt; &quot;$ &quot; &lt;&lt; cmd &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
+ 
+ 			pid = run_pgrp_bg(pcmd, pcmdv, cmd, cmdv,
+-					  pid_str, opt-&gt;proc_name, 3,
++					  pid_str, opt-&gt;game_call, 3,
+ 					  false, true);
+ 			if (pid &gt; 0)
+ 				opt-&gt;scanmem_pid = pid;
+@@ -729,6 +729,7 @@ i32 main (i32 argc, char **argv, char **env)
+ 		fflush(stdout);
+ 		cin &gt;&gt; input_str;
+ 		opt.proc_name = to_c_str(&amp;input_str);
++		opt.game_call = opt.proc_name;
+ 	}
+ 
+ 	if (opt.disc_str) {
+@@ -748,7 +749,7 @@ i32 main (i32 argc, char **argv, char **env)
+ 	}
+ 
+ 	if (!opt.game_path)
+-		opt.game_path = get_abs_app_path(opt.proc_name);
++		opt.game_path = get_abs_app_path(opt.game_call);
+ 	if (!opt.game_path)
+ 		return -1;
+ 
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000100.html">[Ugtrain-devel] [PATCH] ugtrain: introduce 'game_params' support
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#99">[ date ]</a>
+              <a href="thread.html#99">[ thread ]</a>
+              <a href="subject.html#99">[ subject ]</a>
+              <a href="author.html#99">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

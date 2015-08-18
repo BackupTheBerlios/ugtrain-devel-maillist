@@ -1,0 +1,141 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] discovery: discover dynmemign optionally in	stage 5
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-October/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20discovery%3A%20discover%20dynmemign%20optionally%20in%0A%09stage%205&In-Reply-To=%3C1381387644-2799-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000027.html">
+   <LINK REL="Next"  HREF="000029.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] discovery: discover dynmemign optionally in	stage 5</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20discovery%3A%20discover%20dynmemign%20optionally%20in%0A%09stage%205&In-Reply-To=%3C1381387644-2799-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] discovery: discover dynmemign optionally in	stage 5">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Thu Oct 10 08:47:24 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000027.html">[Ugtrain-devel] [PATCH] examples/adapt: unify adaption code
+</A></li>
+        <LI>Next message: <A HREF="000029.html">[Ugtrain-devel] [PATCH] discovery: enhance stage 5 by sorting stack	offsets
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#28">[ date ]</a>
+              <a href="thread.html#28">[ thread ]</a>
+              <a href="subject.html#28">[ subject ]</a>
+              <a href="author.html#28">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>This is a preparation for a smarter stage 5 adaption. The idea
+is that the stack offset in dynmemign doesn't have to be found.
+We will later sort the given and the discovered stack offsets
+so that they are put to the correct locations no matter of the
+order they have been discovered.
+---
+ src/cfgentry.h    |  1 +
+ src/cfgparser.cpp |  4 +++-
+ src/discovery.cpp | 15 ++++++++-------
+ 3 files changed, 12 insertions(+), 8 deletions(-)
+
+diff --git a/src/cfgentry.h b/src/cfgentry.h
+index 95138b9..b7635ec 100644
+--- a/src/cfgentry.h
++++ b/src/cfgentry.h
+@@ -53,6 +53,7 @@ public:
+ 	void *code_addr;
+ 	void *stack_offs[MAX_STACK];
+ 	u8 num_stack;
++	u8 num_sign;
+ 
+ 	/* later determined values */
+ 	vector&lt;void *&gt; v_maddr;    /* set by malloc calls */
+diff --git a/src/cfgparser.cpp b/src/cfgparser.cpp
+index 7c07b8b..e8a3e6e 100644
+--- a/src/cfgparser.cpp
++++ b/src/cfgparser.cpp
+@@ -432,9 +432,11 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			} else {
+ 				cfg_parse_err(&amp;line, lnr, start);
+ 			}
+-			if (name_type == NAME_DYNMEM_IGN)
++			if (name_type == NAME_DYNMEM_IGN) {
+ 				dynmem_enp-&gt;soffs_ign[dynmem_enp-&gt;num_stack] =
+ 					true;
++				dynmem_enp-&gt;num_sign++;
++			}
+ 			dynmem_enp-&gt;num_stack++;
+ 			break;
+ 
+diff --git a/src/discovery.cpp b/src/discovery.cpp
+index cccd927..80fe7e1 100644
+--- a/src/discovery.cpp
++++ b/src/discovery.cpp
+@@ -57,17 +57,17 @@ static i32 postproc_stage5 (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 	char ch;
+ 
+ 	for (cfg_it = cfg-&gt;begin(); cfg_it != cfg-&gt;end(); cfg_it++) {
+-		if (!cfg_it-&gt;dynmem)
++		if (!cfg_it-&gt;dynmem || cfg_it-&gt;dynmem == tmp)
+ 			continue;
+-		if (cfg_it-&gt;dynmem-&gt;adp_addr == opt-&gt;disc_addr &amp;&amp;
+-		    cfg_it-&gt;dynmem-&gt;adp_sidx == cfg_it-&gt;dynmem-&gt;num_stack &amp;&amp;
+-		    !cfg_it-&gt;dynmem-&gt;adp_failed) {
++		tmp = cfg_it-&gt;dynmem;
++
++		if (tmp-&gt;adp_addr == opt-&gt;disc_addr &amp;&amp; !tmp-&gt;adp_failed &amp;&amp;
++		    tmp-&gt;adp_sidx &gt;= tmp-&gt;num_stack - tmp-&gt;num_sign) {
+ 			discovered = 1;
+ 			continue;
+ 		}
+-		if (!(cfg_it-&gt;dynmem-&gt;adp_addr &amp;&amp;
+-		      cfg_it-&gt;dynmem-&gt;adp_sidx == cfg_it-&gt;dynmem-&gt;num_stack &amp;&amp;
+-		      !cfg_it-&gt;dynmem-&gt;adp_failed)) {
++		if (!(tmp-&gt;adp_addr &amp;&amp; !tmp-&gt;adp_failed &amp;&amp;
++		      tmp-&gt;adp_sidx &gt;= tmp-&gt;num_stack - tmp-&gt;num_sign)) {
+ 			cout &lt;&lt; &quot;Undiscovered objects found!&quot; &lt;&lt; endl;
+ 			if (discovered) {
+ 				cout &lt;&lt; &quot;Next discovery run (y/n)? : &quot;;
+@@ -87,6 +87,7 @@ static i32 postproc_stage5 (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 	cout &lt;&lt; &quot;Discovery successful!&quot; &lt;&lt; endl;
+ 
+ 	// Take over discovery
++	tmp = NULL;
+ 	for (cfg_it = cfg-&gt;begin(); cfg_it != cfg-&gt;end(); cfg_it++) {
+ 		if (!cfg_it-&gt;dynmem || cfg_it-&gt;dynmem == tmp)
+ 			continue;
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000027.html">[Ugtrain-devel] [PATCH] examples/adapt: unify adaption code
+</A></li>
+	<LI>Next message: <A HREF="000029.html">[Ugtrain-devel] [PATCH] discovery: enhance stage 5 by sorting stack	offsets
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#28">[ date ]</a>
+              <a href="thread.html#28">[ thread ]</a>
+              <a href="subject.html#28">[ subject ]</a>
+              <a href="author.html#28">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

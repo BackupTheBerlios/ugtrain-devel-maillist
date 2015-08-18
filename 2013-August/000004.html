@@ -1,0 +1,137 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] examples: add warzone2100 32-bit adaption
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-August/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20examples%3A%20add%20warzone2100%2032-bit%20adaption&In-Reply-To=%3C1377805601-5188-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000003.html">
+   <LINK REL="Next"  HREF="000005.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] examples: add warzone2100 32-bit adaption</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20examples%3A%20add%20warzone2100%2032-bit%20adaption&In-Reply-To=%3C1377805601-5188-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] examples: add warzone2100 32-bit adaption">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Thu Aug 29 21:46:41 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000003.html">[Ugtrain-devel] [PATCH 3/3] ugtrain: prepare Windows support
+</A></li>
+        <LI>Next message: <A HREF="000005.html">[Ugtrain-devel] [PATCH] configure.in: fix linuxhooking compilation
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#4">[ date ]</a>
+              <a href="thread.html#4">[ thread ]</a>
+              <a href="subject.html#4">[ subject ]</a>
+              <a href="author.html#4">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>---
+ examples/adapt/warzone2100_adapt32.sh |   47 +++++++++++++++++++++++++++++++++
+ examples/warzone2100-32.conf          |    3 +++
+ 2 files changed, 50 insertions(+)
+ create mode 100755 examples/adapt/warzone2100_adapt32.sh
+
+diff --git a/examples/adapt/warzone2100_adapt32.sh b/examples/adapt/warzone2100_adapt32.sh
+new file mode 100755
+index 0000000..bd37a58
+--- /dev/null
++++ b/examples/adapt/warzone2100_adapt32.sh
+@@ -0,0 +1,47 @@
++#!/bin/bash
++
++# The issue is that code address and stack offset for mallocs can differ
++# from distribution to distribution. But the thing which remains constant
++# is often the way how the code internally works.
++
++# Warzone 2100 2.3.8
++
++# We already know that warzone2100 is a 32-bit C++ application and that
++# the DROID structure is allocated with malloc().
++# From previous discovery runs we already know the malloc size (876 or
++# 0x36c) for the object (DROID) in which the BODY POINTS are stored.
++
++CWD=`dirname $0`
++cd &quot;$CWD&quot;
++APP_PATH=`which warzone2100`
++APP_VERS=`warzone2100 --version | grep -o &quot;Version.*&quot; | cut -d ' ' -f 2`
++
++IFS=`printf '\n+'`
++CODE_PART=`objdump -D &quot;$APP_PATH&quot; | grep &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; -B 1 -A 1 | grep -A 2 0x36c`
++if [ &quot;$CODE_PART&quot; == &quot;&quot; ]; then exit 1; fi
++
++CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
++if [ $CODE_LINES -ne 3 ]; then exit 1; fi
++
++CODE_CALL=`echo -e &quot;$CODE_PART&quot; | cut -d '
++' -f 2 | grep call`
++if [ &quot;$CODE_CALL&quot; == &quot;&quot; ]; then exit 1; fi
++
++CODE_ADDR=`echo -e &quot;$CODE_PART&quot; | cut -d '
++' -f 3 | cut -d ':' -f 1 | tr -d [:blank:]`
++if [ &quot;$CODE_ADDR&quot; == &quot;&quot; ]; then exit 1; fi
++IFS=''
++
++RESULT=`echo &quot;1;Droid;0x$CODE_ADDR&quot;`
++echo &quot;$RESULT&quot;
++
++# Should return something like this:
++# 813ce5e:	c7 04 24 6c 03 00 00 	movl   $0x36c,(%esp)
++# 813ce65:	e8 76 73 f3 ff       	call   80741e0 &lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>&gt;
++# 813ce6a:	85 c0                	test   %eax,%eax
++
++# This shows us that 0x813ce6a is the relevant code address.
++
++# We can jump directly to stage 4 of the discovery with that and leave the
++# heap start and end offsets at 0x0 (NULL) as we already know the unique
++# code address and malloc size.
+diff --git a/examples/warzone2100-32.conf b/examples/warzone2100-32.conf
+index d9a916b..aabae58 100644
+--- a/examples/warzone2100-32.conf
++++ b/examples/warzone2100-32.conf
+@@ -44,6 +44,9 @@ check 0x50 u16 g 2
+ 
+ dynmemend
+ 
++adapt_script adapt/warzone2100_adapt32.sh
++adapt_required 1
++
+ 
+ # The bools are easy to discover:
+ # 0. run the game and &quot;scanmem&quot;
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000003.html">[Ugtrain-devel] [PATCH 3/3] ugtrain: prepare Windows support
+</A></li>
+	<LI>Next message: <A HREF="000005.html">[Ugtrain-devel] [PATCH] configure.in: fix linuxhooking compilation
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#4">[ date ]</a>
+              <a href="thread.html#4">[ thread ]</a>
+              <a href="subject.html#4">[ subject ]</a>
+              <a href="author.html#4">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

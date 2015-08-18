@@ -1,0 +1,198 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] doc: introduce dynamic memory doc
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-October/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20doc%3A%20introduce%20dynamic%20memory%20doc&In-Reply-To=%3C1382598942-3177-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000038.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] doc: introduce dynamic memory doc</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20doc%3A%20introduce%20dynamic%20memory%20doc&In-Reply-To=%3C1382598942-3177-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] doc: introduce dynamic memory doc">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Thu Oct 24 09:15:42 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000038.html">[Ugtrain-devel] [PATCH] examples: warzone2100: 64-bit: add Droid	speed cheating
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#39">[ date ]</a>
+              <a href="thread.html#39">[ thread ]</a>
+              <a href="subject.html#39">[ subject ]</a>
+              <a href="author.html#39">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>---
+ doc/ugtrain-dynmem.txt | 126 +++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 126 insertions(+)
+ create mode 100644 doc/ugtrain-dynmem.txt
+
+diff --git a/doc/ugtrain-dynmem.txt b/doc/ugtrain-dynmem.txt
+new file mode 100644
+index 0000000..110d4d9
+--- /dev/null
++++ b/doc/ugtrain-dynmem.txt
+@@ -0,0 +1,126 @@
++=== Dynamic Memory Cheating ===
++
++Cheating dynamic memory always requires a preloader which loads a memory
++hacking library into the game process. The ugtrain uses &quot;ugpreload&quot; and
++&quot;libmemhack&quot; for that. The library gets the unique code addresses of unique
++&quot;malloc&quot; calls and their reverse stack offsets as a config through a FIFO.
++In return it tells the user of how many memory objects per memory class it can
++keep track of. This is important for the freeing of the objects. If ugtrain
++wouldn't be informed about the freeing, then this can cause major game
++stability issues. Value locations are used as offsets within the objects. They
++become only active if at least one object has been allocated. The lib sends
++the code and the memory address through a second FIFO to ugtrain. We can use
++a special check if the allocated object belongs to us or otherwise an opponent.
++If it fails, it removes the object from the active ugtrain in-memory config.
++The rest works the same way as with static memory.
++
++The CLI option '-P' is recommended for this. With that libmemhack is preloaded
++and the game is started automatically. The advantage is that root permissions
++aren't required.
++
++Required config options: &quot;dynmemstart&quot;, &quot;dynmemend&quot;
++Related config options: &quot;checko&quot;
++FIFOs: /tmp/memhack_in, /tmp/memhack_out
++
++
++=== Dynamic Memory Discovery ===
++
++For discovery another library is required (&quot;libmemdisc&quot;). This one takes a
++stage number and the stage parameters as config and is preloaded with ugpreload
++as well.
++
++Discovery is done in the following stages:
++
++1. Find the malloc size           (all mallocs and frees are recorded)
++2. Verify the malloc size         (frees are ignored)
++3. Find the code address
++4. Find the reverse stack offset
++
++The ugtrain option '-D' helps with that. It assumes '-P' and libmemdisc. All
++we need are the following stage parameters for the '-D' option:
++
++1. &quot;StageNr[;HeapStartOffs;HeapEndOffs]&quot;
++2. &quot;StageNr[;HeapStartOffs;HeapEndOffs;MemSize]&quot;
++3. &quot;StageNr;HeapStartOffs;HeapEndOffs;MemSize[;CodeStart;CodeEnd]&quot;
++4. &quot;StageNr;HeapStartOffs;HeapEndOffs;MemSize[;CodeStart;CodeEnd][;CodeAddr]&quot;
++
++Examples:
++
++1. &quot;1&quot;, &quot;1;0x0;0x0&quot;, &quot;1;0x200000;0x350000&quot;
++2. &quot;2&quot;, &quot;2;0x0;0x0;0&quot;, &quot;2;0x200000;0x350000;288&quot;
++3. &quot;3;0x0;0x0;288&quot;, &quot;3;0x200000;0x350000;288;0x404d50;0x425c88&quot;
++4. &quot;4;0x0;0x0;288&quot;, &quot;4;0x200000;0x350000;288;0x404d50;0x425c88;0x40f4e7&quot;
++
++You see, we can also do this in only two stages: stages 2 and 4. Size 0 means
++that all sizes are recorded in stage 2. The ugtrain expands the first example
++string to the second in stages 1 and 2. 0x0;0x0 in the heap filter means
++unfiltered. The libmemdisc tells you about heap start and stack end. In stages
++3 and 4 ugtrain finds out the code start and end for you by &quot;objdump -p&quot;-based
++binary header extraction. Only the malloc size is important there.
++
++Returns:
++
++1. &quot;m0x87acd0;s288&quot;, &quot;f0x87acd0&quot;
++--&gt; 'm' for malloc and 'f' for free, the address is the memory address of
++the object, 's' is the size in bytes
++2. &quot;m0x87acd0;s288&quot;
++3. &quot;m0x87acd0;s288;c0x40f4e7;c0x417801&quot;
++--&gt; 'c' is the code address in the backtrace
++4. &quot;m0x87acd0;s288;c0x40f4e7;o0x28;c0x417801;o0x48&quot;
++--&gt; 'o' is the reverse stack offset of the code address
++
++The results are written with caching directly from /tmp/memhack_out into the
++file /tmp/memhack_file. After ending the game ugtrain asks you for a memory
++address from parallel static memory search. Enter it and ugtrain will search
++for the matching malloc calls. It is very likely that interesting objects
++are kept until game end. So they should be at the end of that list. But as in
++stage 3 and 4 the &quot;objdump -D&quot;-based symbol lookup is quite slow, we reverse
++that list and the interesting malloc is at the top. This way you can interrupt
++the symbol lookup earlier.
++
++Example stage 2:
++
++$ ugtrain -D &quot;2&quot; examples/chromium-bsu64.conf
++...
++Memory address (e.g. 0xdeadbeef): 0x87ad8c
++Searching reverse for 0x87ad8c in discovery output..
++m0x87acd0;s288 contains 0x87ad8c, offs: 0xbc, heap offs: 0x2257f0
++m0x87acd0;s344 contains 0x87ad8c, offs: 0xbc, heap offs: 0x2257f0
++m0x87acd0;s344 contains 0x87ad8c, offs: 0xbc, heap offs: 0x2257f0
++...
++
++This shows us that the malloc size is 288 bytes and the offset in the object
++is 0xbc (used the lives in the HeroAircraft object in Chromium B.S.U. 64-bit).
++We also get to know the heap offset.
++
++Example stage 4:
++
++$ ugtrain -D &quot;4;0x0;0x0;288&quot; examples/chromium-bsu64.conf
++...
++Memory address (e.g. 0xdeadbeef): 0x8a605c
++Searching reverse for 0x8a605c in discovery output..
++m0x8a5fa0;s288 contains 0x8a605c, offs: 0xbc, heap offs: 0x250ac0
++c0x40f4e7;o0x28 &lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>&gt;
++c0x417801;o0x48
++c0x404be6;o0x78
++...
++
++Only &lt;*@plt&gt; direct library calls are displayed and &quot;_Znwm&quot; on the first
++position is exactly what we are looking for. It is a C++ internal function
++which calls &quot;malloc&quot; internally. On 32-bit systems it is called &quot;_Znwj&quot;.
++We can see the reverse stack offset is 0x28. It would be lower if &quot;malloc&quot;
++would have been called directly from the game binary (e.g. 0x8). We also
++get to know the code jump back address 0x40f4e7.
++
++That's it! We can write a basic config for the lives in chromium-bsu. We
++start with a watcher in order to verify that our findings are correct.
++
++chromium-bsu
++dynmemstart HeroAircraft 288 0x40f4e7 0x28
++Lives 0xbc i32 watch
++dynmemend
++
++$ ugtrain -P test.conf
++
++
++=== Dynamic Memory Adaption ===
+-- 
+1.8.1.5
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000038.html">[Ugtrain-devel] [PATCH] examples: warzone2100: 64-bit: add Droid	speed cheating
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#39">[ date ]</a>
+              <a href="thread.html#39">[ thread ]</a>
+              <a href="subject.html#39">[ subject ]</a>
+              <a href="author.html#39">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

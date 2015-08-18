@@ -1,0 +1,221 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] doc: dynmem: enhance hex dump discovery and	adaption
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-November/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20doc%3A%20dynmem%3A%20enhance%20hex%20dump%20discovery%20and%0A%09adaption&In-Reply-To=%3C1383552575-3236-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000040.html">
+   <LINK REL="Next"  HREF="000042.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] doc: dynmem: enhance hex dump discovery and	adaption</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20doc%3A%20dynmem%3A%20enhance%20hex%20dump%20discovery%20and%0A%09adaption&In-Reply-To=%3C1383552575-3236-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] doc: dynmem: enhance hex dump discovery and	adaption">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Mon Nov  4 09:09:35 CET 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000040.html">[Ugtrain-devel] [PATCH] doc: dynmem: correct and enhance discovery
+</A></li>
+        <LI>Next message: <A HREF="000042.html">[Ugtrain-devel] [PATCH 0/5] ugtrain: Integrate scanmem
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#41">[ date ]</a>
+              <a href="thread.html#41">[ thread ]</a>
+              <a href="subject.html#41">[ subject ]</a>
+              <a href="author.html#41">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>We have two dumps from Chromium B.S.U. 64-bit now: One dump low
+on everything and one dump high on everything. We compare this
+thing together in order to find the interesting values.
+---
+ doc/0_000_hig.dump.txt | 18 +++++++++++++++
+ doc/0_000_low.dump.txt | 18 +++++++++++++++
+ doc/ugtrain-dynmem.txt | 59 ++++++++++++++++++++++++++++++++++++++++++--------
+ 3 files changed, 86 insertions(+), 9 deletions(-)
+ create mode 100644 doc/0_000_hig.dump.txt
+ create mode 100644 doc/0_000_low.dump.txt
+
+diff --git a/doc/0_000_hig.dump.txt b/doc/0_000_hig.dump.txt
+new file mode 100644
+index 0000000..f22b452
+--- /dev/null
++++ b/doc/0_000_hig.dump.txt
+@@ -0,0 +1,18 @@
++0000000: b053 4200 0000 0000 998e 1e41 b415 8bc0  .SB........A....
++0000010: 0000 c841 0000 0000 0000 0000 0000 0000  ...A............
++0000020: 0000 0000 0000 0000 0000 0000 0000 0000  ................
++0000030: 0000 0000 0000 0000 1a00 0000 1b00 0000  ................
++0000040: 0000 0000 0000 0000 0000 0000 0000 0000  ................
++0000050: 0000 0000 0000 0000 0101 0100 cc8e 1e41  ...............A
++0000060: 4514 8bc0 0000 c841 3333 333f 9a99 593f  E......A333?..Y?
++0000070: 0000 20c1 0000 2041 0000 f0c0 0000 f040  .. ... A.......@
++0000080: b11d 0f3f cd4b 523f 4487 103f 6b4a b33e  ...?.KR?D..?kJ.&gt;
++0000090: 97dd 813e f747 28bf 097e 723e cbce 40bf  ...&gt;.G(..~r&gt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">.. at .</A>
++00000a0: 2b50 44bf 7855 e9be 101d 21bf 3d1c f63d  +PD.xU....!.=..=
++00000b0: ae64 18bf 5a50 1f3f 0000 87c1 0900 0000  .d..ZP.?........
++00000c0: 0000 0000 0000 0000 0050 4347 0050 4347  .........PCG.PCG
++00000d0: 0000 1643 0000 1643 0000 1643 00d7 a3bc  ...C...C...C....
++00000e0: 00d7 a3bc 00d7 a3bc 0000 0000 0000 fac3  ................
++00000f0: 6b10 7844 0090 e245 0000 0000 0000 0000  k.xD...E........
++0000100: 0000 0000 0000 0000 19a0 48b8 7e10 34b9  ..........H.~.4.
++0000110: 0000 0000 0000 0000 c057 6500 0000 0000  .........We.....
+diff --git a/doc/0_000_low.dump.txt b/doc/0_000_low.dump.txt
+new file mode 100644
+index 0000000..109a921
+--- /dev/null
++++ b/doc/0_000_low.dump.txt
+@@ -0,0 +1,18 @@
++0000000: b053 4200 0000 0000 3bdb e540 d660 66c0  .SB.....;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">.. at .</A>`f.
++0000010: 0000 c841 0000 0000 0000 0000 0000 0000  ...A............
++0000020: 0000 0000 0000 0000 0000 0000 0000 0000  ................
++0000030: 0000 0000 0000 0000 1a00 0000 1b00 0000  ................
++0000040: 0000 0000 0000 0000 0000 0000 0000 0000  ................
++0000050: 0000 0000 0000 0000 0000 0000 8336 e540  .............6.@
++0000060: 3477 66c0 0000 c841 3333 333f 9a99 593f  4wf....A333?..Y?
++0000070: 0000 20c1 0000 2041 0000 f0c0 0000 f040  .. ... A.......@
++0000080: 0000 0000 0000 0000 0000 0000 0000 0000  ................
++0000090: 0000 0000 0000 0000 0000 0000 0000 0000  ................
++00000a0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
++00000b0: 0000 0000 0000 0000 0000 0000 0900 0000  ................
++00000c0: 0000 0000 0000 0000 0050 4347 0050 4347  .........PCG.PCG
++00000d0: 0000 0000 0000 0000 0000 0000 0000 80bf  ................
++00000e0: 0000 80bf 0000 80bf 0000 0000 d0cc acc1  ................
++00000f0: 0000 0000 00f0 a045 0000 0000 0000 0000  .......E........
++0000100: 0000 0000 0000 0000 257d a13c db70 af3a  ........%}.&lt;.p.:
++0000110: 0000 0000 0000 0000 c057 6500 0000 0000  .........We.....
+diff --git a/doc/ugtrain-dynmem.txt b/doc/ugtrain-dynmem.txt
+index 00e4b59..892439a 100644
+--- a/doc/ugtrain-dynmem.txt
++++ b/doc/ugtrain-dynmem.txt
+@@ -227,13 +227,51 @@ the '_' there is the class index and after it the object index. Just compare
+ two dumps: when you are low on everything and when you are high on everything.
+ This way you can easily find other values like ammo and shields. A zero is also
+ with a float a zero in hex. The .dump files are binary files so either you use
+-a binary diff tool or you convert it into text first and use a text diff tool
++a binary diff tool or you convert them into text first and use a text diff tool
+ like e.g. &quot;meld&quot;. Conversion can be done as follows:
+ 
+ $ xxd 0_000.dump &gt; 0_000.dump.txt
+ 
+ The tool &quot;xxd&quot; is part of the &quot;vim&quot; package.
+ 
++Note: Dumping objects to existing files overwrites them. So rename them before
++dumping another state.
++
++Here, in the &quot;doc&quot; directory you can find the files 0_000_low.dump.txt and
++0_000_hig.dump.txt. These represent the HeroAircraft object. In the first state
++there are no shields, no extra weapons and we are very close to be destroyed.
++In the other state there are extra shields and full extra weapons. Compare the
++files with a text diff tool. We mainly search for transitions from zero to a
++quite high number and patterns of three times the same value (for ammo).
++
++Remember: Everything is stored little-endian and very likely memory aligned.
++
++Have you found the other values?
++
++At offset 0x58 it looks like we have a bool array related to weapons. Bools are
++often stored as u8, esp. in standard C99/C++. We have three times transition
++from false (0x0) to true (0x1) and the following byte seems to be unused for
++padding/alignment and remains 0x0.
++
++We are looking for low precision values with some zeros still in them - either
++integers or floats. In front of the lives only 0xb8 looks interesting like a
++negative float but -16.875 doesn't sound reasonable. Instead the location 0xd0
++looks very good: We have three times 0x43160000 (150.0). Yes, looks like we've
++found the ammo array as floats! Hmmm, another 3 values float array follows
++with transition from -1.0 to -0.02. That's the gun pause and not interesting
++for us as we can't make the guns shoot faster. Let's proceed to 0xec. We have
++a float transition from -21.6 to -500.0. Looks like they store the health as
++a negative damage value. Like we know programmers, we must be very close to
++the shields, now. Indeed, at 0xf0 there is a transition to 992.3. It is very
++difficult to retain full shields very long but from here we can guess that
++1000.0 is the maximum. We can also work with the dynamic wish value 'max' in
++the config to verify. The next value at 0xf4 seems to be a float as well. It
++is a transition from 5150.0 to 7250.0. This must be the score. It took a
++little longer to acquire the weapons and shields. Strange that they store it
++as float! Cheating it doesn't make much sense, so we ignore or just watch it.
++
++== Multiple Objects ==
++
+ If you've got a lot of objects and don't know exactly which ones are yours and
+ which ones are enemies, use the binary diff tool &quot;ugsimfind&quot;. It compares upto
+ 100 object files byte by byte and tells you for each byte its value as well as
+@@ -251,8 +289,8 @@ fidx: 0x22
+ 0_021.dump, 0_022.dump, ...,
+ 
+ The campaign starts with 7 own Droids and 40 enemies in Warzone 2100. From the
+-name string we know that these are exactly these 7. We have player ID 0 and the
+-AI has ID 6 and ID 7. So at offset 0x22 is our player ID.
++name string we know that these files are exactly these 7 own Droids. We have
++player ID 0 and the AI has ID 6 and ID 7. So at offset 0x22 is our player ID.
+ 
+ 
+ === Dynamic Memory Adaption ===
+@@ -269,10 +307,13 @@ Run the adaption script, now (y/n)? : y
+ If you're not sure here, just take a look at the adaption shell script. It
+ searches for an unique call to &quot;_Znwm&quot;, &quot;_Znwj&quot; or &quot;malloc&quot; in the disassembly
+ (objdump -D) of the game binary. If it fails, it doesn't return anything. Then,
+-you have to do full discovery or try to set the option &quot;DEBUG=1&quot; in
+-examples/adapt/_common_adapt.sh and to run the adaption script alone.
++you have to try to set the option &quot;DEBUG=1&quot; in examples/adapt/_common_adapt.sh
++and to run the adaption script alone. If you still can't fix adaption, then
++you have to do full discovery.
++
++$ examples/adapt/chromium-bsu_adapt64.sh `which chromium-bsu`
+ 
+-In our case it succeeds:
++In our case adaption succeeds:
+ ...
+ Adaption return:
+ 1;HeroAircraft;0x410e17
+@@ -288,9 +329,9 @@ written back.
+ But if you say &quot;y&quot;, the game starts with a discovery stage 5 string. E.g:
+ &quot;5;0x0;0x0;288;0x410e17;0x410e17;0x410e17&quot;. This behaves like stage 4. The
+ difference is in the processing in ugtrain. All you need to do in the game
+-is that at least one object of the currently discovered memory class gets
+-allocated. This also repeats until all classes are discovered and then the
+-config is written back. The config command &quot;adapt_required&quot; is set to &quot;0&quot;
++is ensuring that at least one object of the currently discovered memory class
++gets allocated. This also repeats until all classes are discovered and then
++the config is written back. The config command &quot;adapt_required&quot; is set to &quot;0&quot;
+ so that you don't get bothered with the adaption wish again.
+ 
+ ...
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000040.html">[Ugtrain-devel] [PATCH] doc: dynmem: correct and enhance discovery
+</A></li>
+	<LI>Next message: <A HREF="000042.html">[Ugtrain-devel] [PATCH 0/5] ugtrain: Integrate scanmem
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#41">[ date ]</a>
+              <a href="thread.html#41">[ thread ]</a>
+              <a href="subject.html#41">[ subject ]</a>
+              <a href="author.html#41">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,259 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] adaption: add GNU backtrace support
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-October/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20adaption%3A%20add%20GNU%20backtrace%20support&In-Reply-To=%3C1381733733-2920-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000032.html">
+   <LINK REL="Next"  HREF="000034.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] adaption: add GNU backtrace support</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20adaption%3A%20add%20GNU%20backtrace%20support&In-Reply-To=%3C1381733733-2920-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] adaption: add GNU backtrace support">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Mon Oct 14 08:55:33 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000032.html">[Ugtrain-devel] [PATCH] ugtrain,	libmemhack: add GNU backtrace support
+</A></li>
+        <LI>Next message: <A HREF="000034.html">[Ugtrain-devel] [PATCH] libmemdisc/hack: use frame pointer,	not stack pointer
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#33">[ date ]</a>
+              <a href="thread.html#33">[ thread ]</a>
+              <a href="subject.html#33">[ subject ]</a>
+              <a href="author.html#33">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>With GNU backtrace we don't need to discover stack offsets. We can
+just write them back as they are. Furthermore, we can skip
+discovery stage 5 and we can jump directly into using libmemhack.
+---
+ src/discovery.cpp | 81 ++++++++++++++++++++++++++++++-------------------------
+ src/discovery.h   |  2 ++
+ src/ugtrain.cpp   | 22 ++++++++-------
+ 3 files changed, 60 insertions(+), 45 deletions(-)
+
+diff --git a/src/discovery.cpp b/src/discovery.cpp
+index ea90ee8..6b76381 100644
+--- a/src/discovery.cpp
++++ b/src/discovery.cpp
+@@ -41,6 +41,50 @@
+ #define MAX_BT 11
+ 
+ 
++void take_over_config (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
++		       string *cfg_path, vector&lt;string&gt; *lines)
++{
++	list&lt;CfgEntry&gt;::iterator cfg_it;
++	DynMemEntry *tmp = NULL;
++	u32 lnr, i;
++
++	for (cfg_it = cfg-&gt;begin(); cfg_it != cfg-&gt;end(); cfg_it++) {
++		if (!cfg_it-&gt;dynmem || cfg_it-&gt;dynmem == tmp)
++			continue;
++		tmp = cfg_it-&gt;dynmem;
++		tmp-&gt;code_addr = tmp-&gt;adp_addr;
++		for (i = 0; i &lt; tmp-&gt;adp_sidx; i++) {
++			if (!opt-&gt;use_gbt)
++				tmp-&gt;stack_offs[i] = tmp-&gt;adp_soffs[i];
++			lnr = tmp-&gt;cfg_lines[i];
++			if (lnr == tmp-&gt;first_line)
++				lines-&gt;at(lnr) = &quot;dynmemstart &quot; + tmp-&gt;name + &quot; &quot;
++					+ to_string(tmp-&gt;mem_size) + &quot; &quot;
++					+ to_string(tmp-&gt;code_addr) + &quot; &quot;
++					+ to_string(tmp-&gt;stack_offs[i]);
++			else if (tmp-&gt;soffs_ign[i])
++				lines-&gt;at(lnr) = &quot;dynmemign &quot;
++					+ to_string(tmp-&gt;stack_offs[i]);
++			else
++				lines-&gt;at(lnr) = &quot;dynmemstack &quot;
++					+ to_string(tmp-&gt;stack_offs[i]);
++		}
++	}
++	// Adaption isn't required anymore
++	lnr = opt-&gt;adp_req_line;
++	if (lnr &gt; 0)
++		lines-&gt;at(lnr) = &quot;adapt_required 0&quot;;
++
++	// Write back config
++	cout &lt;&lt; &quot;Writing back config..&quot; &lt;&lt; endl;
++	write_config_vect(cfg_path, lines);
++
++	// Run game with libmemhack
++	opt-&gt;do_adapt = false;
++	opt-&gt;disc_str = NULL;
++	use_libmemhack(opt);
++}
++
+ static void process_stage5_result (DynMemEntry *dynmem)
+ {
+ 	u32 i;
+@@ -130,7 +174,6 @@ static i32 postproc_stage5 (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 	list&lt;CfgEntry&gt;::iterator cfg_it;
+ 	DynMemEntry *tmp = NULL;
+ 	bool discovered = false;
+-	u32 lnr, i;
+ 	char ch;
+ 
+ 	for (cfg_it = cfg-&gt;begin(); cfg_it != cfg-&gt;end(); cfg_it++) {
+@@ -172,41 +215,7 @@ static i32 postproc_stage5 (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 	cout &lt;&lt; &quot;Discovery successful!&quot; &lt;&lt; endl;
+ 
+ 	// Take over discovery
+-	tmp = NULL;
+-	for (cfg_it = cfg-&gt;begin(); cfg_it != cfg-&gt;end(); cfg_it++) {
+-		if (!cfg_it-&gt;dynmem || cfg_it-&gt;dynmem == tmp)
+-			continue;
+-		tmp = cfg_it-&gt;dynmem;
+-		tmp-&gt;code_addr = tmp-&gt;adp_addr;
+-		for (i = 0; i &lt; tmp-&gt;adp_sidx; i++) {
+-			tmp-&gt;stack_offs[i] = tmp-&gt;adp_soffs[i];
+-			lnr = tmp-&gt;cfg_lines[i];
+-			if (lnr == tmp-&gt;first_line)
+-				lines-&gt;at(lnr) = &quot;dynmemstart &quot; + tmp-&gt;name + &quot; &quot;
+-					+ to_string(tmp-&gt;mem_size) + &quot; &quot;
+-					+ to_string(tmp-&gt;code_addr) + &quot; &quot;
+-					+ to_string(tmp-&gt;stack_offs[i]);
+-			else if (tmp-&gt;soffs_ign[i])
+-				lines-&gt;at(lnr) = &quot;dynmemign &quot;
+-					+ to_string(tmp-&gt;stack_offs[i]);
+-			else
+-				lines-&gt;at(lnr) = &quot;dynmemstack &quot;
+-					+ to_string(tmp-&gt;stack_offs[i]);
+-		}
+-	}
+-	// Adaption isn't required anymore
+-	lnr = opt-&gt;adp_req_line;
+-	if (lnr &gt; 0)
+-		lines-&gt;at(lnr) = &quot;adapt_required 0&quot;;
+-
+-	// Write back config
+-	cout &lt;&lt; &quot;Writing back config..&quot; &lt;&lt; endl;
+-	write_config_vect(cfg_path, lines);
+-
+-	// Run game with libmemhack
+-	opt-&gt;do_adapt = false;
+-	opt-&gt;disc_str = NULL;
+-	use_libmemhack(opt);
++	take_over_config(opt, cfg, cfg_path, lines);
+ 	return DISC_OKAY;
+ }
+ 
+diff --git a/src/discovery.h b/src/discovery.h
+index 1ff41f4..81ef29a 100644
+--- a/src/discovery.h
++++ b/src/discovery.h
+@@ -37,5 +37,7 @@ void run_stage1234_loop (void *argp);
+ void run_stage5_loop    (list&lt;CfgEntry&gt; *cfg, i32 ifd, i32 pmask, pid_t pid);
+ i32  postproc_discovery (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 			 string *cfg_path, vector&lt;string&gt; *lines);
++void take_over_config   (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
++			 string *cfg_path, vector&lt;string&gt; *lines);
+ 
+ #endif
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index 0c8eaaf..9f15850 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -636,8 +636,8 @@ skip_memhack:
+ 	return 0;
+ }
+ 
+-static i32 parse_adapt_result (list&lt;CfgEntry&gt; *cfg, char *buf,
+-			       ssize_t buf_len)
++static i32 parse_adapt_result (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
++			       char *buf, ssize_t buf_len)
+ {
+ 	char *part_end = buf;
+ 	ssize_t part_size, ppos = 0;
+@@ -672,6 +672,9 @@ static i32 parse_adapt_result (list&lt;CfgEntry&gt; *cfg, char *buf,
+ 			if (it-&gt;dynmem &amp;&amp; !it-&gt;dynmem-&gt;adp_addr &amp;&amp;
+ 			    it-&gt;dynmem-&gt;name == *obj_name) {
+ 				it-&gt;dynmem-&gt;adp_addr = code_addr;
++				if (opt-&gt;use_gbt)
++					it-&gt;dynmem-&gt;adp_sidx =
++						it-&gt;dynmem-&gt;num_stack;
+ 				found = 1;
+ 				break;
+ 			}
+@@ -698,15 +701,14 @@ parse_err:
+ 	return -1;
+ }
+ 
+-static i32 adapt_config (list&lt;CfgEntry&gt; *cfg, char *adp_script,
+-			 char *game_path)
++static i32 adapt_config (struct app_options *opt, list&lt;CfgEntry&gt; *cfg)
+ {
+ 	char pbuf[PIPE_BUF] = { 0 };
+ 	ssize_t read_bytes;
+-	const char *cmd = (const char *) adp_script;
++	const char *cmd = (const char *) opt-&gt;adp_script;
+ 	char *cmdv[] = {
+-		adp_script,
+-		game_path,
++		opt-&gt;adp_script,
++		opt-&gt;game_path,
+ 		NULL
+ 	};
+ 
+@@ -724,7 +726,7 @@ static i32 adapt_config (list&lt;CfgEntry&gt; *cfg, char *adp_script,
+ 	else
+ 		cout &lt;&lt; pbuf &lt;&lt; endl;
+ 
+-	if (parse_adapt_result(cfg, pbuf, read_bytes) != 0)
++	if (parse_adapt_result(opt, cfg, pbuf, read_bytes) != 0)
+ 		goto err;
+ 
+ 	return 0;
+@@ -904,10 +906,12 @@ i32 main (i32 argc, char **argv, char **env)
+ 			cerr &lt;&lt; &quot;Error, no adaption script!&quot; &lt;&lt; endl;
+ 			return -1;
+ 		}
+-		if (adapt_config(&amp;cfg, opt.adp_script, opt.game_path) != 0) {
++		if (adapt_config(&amp;opt, &amp;cfg) != 0) {
+ 			cerr &lt;&lt; &quot;Error while code address adaption!&quot; &lt;&lt; endl;
+ 			return -1;
+ 		}
++		if (opt.use_gbt)
++			take_over_config(&amp;opt, &amp;cfg, cfg_path, &amp;lines);
+ 	}
+ 
+ discover_next:
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000032.html">[Ugtrain-devel] [PATCH] ugtrain,	libmemhack: add GNU backtrace support
+</A></li>
+	<LI>Next message: <A HREF="000034.html">[Ugtrain-devel] [PATCH] libmemdisc/hack: use frame pointer,	not stack pointer
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#33">[ date ]</a>
+              <a href="thread.html#33">[ thread ]</a>
+              <a href="subject.html#33">[ subject ]</a>
+              <a href="author.html#33">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

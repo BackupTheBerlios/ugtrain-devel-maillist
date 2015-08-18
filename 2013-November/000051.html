@@ -1,0 +1,211 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain,	system: Introduce pid_is_running() function
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-November/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%2C%0A%09system%3A%20Introduce%20pid_is_running%28%29%20function&In-Reply-To=%3C4586125.tXnnyi6ZK8%40basti-pc%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000049.html">
+   <LINK REL="Next"  HREF="000052.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain,	system: Introduce pid_is_running() function</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%2C%0A%09system%3A%20Introduce%20pid_is_running%28%29%20function&In-Reply-To=%3C4586125.tXnnyi6ZK8%40basti-pc%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain,	system: Introduce pid_is_running() function">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Tue Nov 12 10:15:14 CET 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000049.html">[Ugtrain-devel] [PATCH] ugtrain,	system: Introduce pid_is_running() function
+</A></li>
+        <LI>Next message: <A HREF="000052.html">[Ugtrain-devel] [PATCH V2] ugtrain,	system: Introduce pid_is_running() function
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#51">[ date ]</a>
+              <a href="thread.html#51">[ thread ]</a>
+              <a href="subject.html#51">[ subject ]</a>
+              <a href="author.html#51">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Damn, this doesn't work, yet! The game process is still running as zombie as 
+we can't wait for it. So we have to implement a zombie detection!
+
+I'll send a V2!
+
+Sebastian Riemer:
+&gt;<i> In ugtrain there is only a single process we really have to care
+</I>&gt;<i> for and that is the game process. In order to check if it is really
+</I>&gt;<i> running, we check PID and process name. For now we do it the same
+</I>&gt;<i> way as we get the game PID with 'pidof -s &lt;proc_name&gt;'.
+</I>&gt;<i> 
+</I>&gt;<i> We also use this to replace the ptrace()-based memory attaching to
+</I>&gt;<i> detect if the game is still running. This helps us returning the
+</I>&gt;<i> correct value upon game exit.
+</I>&gt;<i> 
+</I>&gt;<i> Known issues:
+</I>&gt;<i> 
+</I>&gt;<i> This might return the PID of another game instance. If this becomes
+</I>&gt;<i> a real issue, then we can just change it in the system functions.
+</I>&gt;<i> ---
+</I>&gt;<i>  src/system.h    |   30 ++++++++++++++++++------------
+</I>&gt;<i>  src/ugtrain.cpp |   24 +++++++++++++-----------
+</I>&gt;<i>  2 files changed, 31 insertions(+), 23 deletions(-)
+</I>&gt;<i> 
+</I>&gt;<i> diff --git a/src/system.h b/src/system.h
+</I>&gt;<i> index 9ffb1ab..8d43865 100644
+</I>&gt;<i> --- a/src/system.h
+</I>&gt;<i> +++ b/src/system.h
+</I>&gt;<i> @@ -23,18 +23,6 @@
+</I>&gt;<i>  #include &lt;windows.h&gt;
+</I>&gt;<i>  #endif
+</I>&gt;<i> 
+</I>&gt;<i> -#ifdef __linux__
+</I>&gt;<i> -static inline u32 sleep_sec (u32 sec)
+</I>&gt;<i> -{
+</I>&gt;<i> -	return sleep(sec);
+</I>&gt;<i> -}
+</I>&gt;<i> -#else
+</I>&gt;<i> -static inline void sleep_sec (u32 sec)
+</I>&gt;<i> -{
+</I>&gt;<i> -	Sleep(sec * 1000);
+</I>&gt;<i> -}
+</I>&gt;<i> -#endif
+</I>&gt;<i> -
+</I>&gt;<i> 
+</I>&gt;<i>  #ifdef __cplusplus
+</I>&gt;<i>  extern &quot;C&quot; {
+</I>&gt;<i> @@ -56,4 +44,22 @@ extern &quot;C&quot; {
+</I>&gt;<i>  };
+</I>&gt;<i>  #endif
+</I>&gt;<i> 
+</I>&gt;<i> +/* Inline functions */
+</I>&gt;<i> +#ifdef __linux__
+</I>&gt;<i> +static inline u32 sleep_sec (u32 sec)
+</I>&gt;<i> +{
+</I>&gt;<i> +	return sleep(sec);
+</I>&gt;<i> +}
+</I>&gt;<i> +#else
+</I>&gt;<i> +static inline void sleep_sec (u32 sec)
+</I>&gt;<i> +{
+</I>&gt;<i> +	Sleep(sec * 1000);
+</I>&gt;<i> +}
+</I>&gt;<i> +#endif
+</I>&gt;<i> +/* assumption: (pid &gt; 0)  --&gt; Please check your PID before! */
+</I>&gt;<i> +static inline bool pid_is_running (pid_t pid, char *proc_name)
+</I>&gt;<i> +{
+</I>&gt;<i> +	return (proc_to_pid(proc_name) == pid);
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i>  #endif
+</I>&gt;<i> diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+</I>&gt;<i> index cadbde0..1023d0e 100644
+</I>&gt;<i> --- a/src/ugtrain.cpp
+</I>&gt;<i> +++ b/src/ugtrain.cpp
+</I>&gt;<i> @@ -472,13 +472,10 @@ static void change_memory (pid_t pid, CfgEntry
+</I>&gt;<i> *cfg_en, u8 *buf, * to do that here in an equal hacky way as the process
+</I>&gt;<i>   * belongs to init.
+</I>&gt;<i>   */
+</I>&gt;<i> -static void catch_orphan (char *proc_name)
+</I>&gt;<i> +static void wait_orphan (pid_t pid, char *proc_name)
+</I>&gt;<i>  {
+</I>&gt;<i> -	pid_t pid;
+</I>&gt;<i> -
+</I>&gt;<i> -	while (1) {
+</I>&gt;<i> -		pid = proc_to_pid(proc_name);
+</I>&gt;<i> -		if (pid &lt; 0)
+</I>&gt;<i> +	while (true) {
+</I>&gt;<i> +		if (!pid_is_running(pid, proc_name))
+</I>&gt;<i>  			return;
+</I>&gt;<i>  		sleep_sec(1);
+</I>&gt;<i>  	}
+</I>&gt;<i> @@ -1114,7 +1111,7 @@ prepare_dynmem:
+</I>&gt;<i>  			if (opt.scanmem_pid &gt; 0) {
+</I>&gt;<i>  				wait_proc(opt.scanmem_pid);
+</I>&gt;<i>  				// Have you closed scanmem before the game?
+</I>&gt;<i> -				catch_orphan(opt.proc_name);
+</I>&gt;<i> +				wait_orphan(pid, opt.proc_name);
+</I>&gt;<i>  			} else {
+</I>&gt;<i>  				wait_proc(pid);
+</I>&gt;<i>  			}
+</I>&gt;<i> @@ -1124,7 +1121,7 @@ prepare_dynmem:
+</I>&gt;<i>  			if (opt.scanmem_pid &gt; 0) {
+</I>&gt;<i>  				wait_proc(opt.scanmem_pid);
+</I>&gt;<i>  				// Have you closed scanmem before the game?
+</I>&gt;<i> -				catch_orphan(opt.proc_name);
+</I>&gt;<i> +				wait_orphan(pid, opt.proc_name);
+</I>&gt;<i>  			} else {
+</I>&gt;<i>  				wait_proc(pid);
+</I>&gt;<i>  			}
+</I>&gt;<i> @@ -1149,7 +1146,7 @@ prepare_dynmem:
+</I>&gt;<i>  	} else if (opt.scanmem_pid &gt; 0) {
+</I>&gt;<i>  		wait_proc(opt.scanmem_pid);
+</I>&gt;<i>  		// Have you closed scanmem before the game?
+</I>&gt;<i> -		catch_orphan(opt.proc_name);
+</I>&gt;<i> +		wait_orphan(pid, opt.proc_name);
+</I>&gt;<i>  		return 0;
+</I>&gt;<i>  	}
+</I>&gt;<i> 
+</I>&gt;<i> @@ -1163,7 +1160,7 @@ prepare_dynmem:
+</I>&gt;<i>  		return -1;
+</I>&gt;<i>  	}
+</I>&gt;<i> 
+</I>&gt;<i> -	while (1) {
+</I>&gt;<i> +	while (true) {
+</I>&gt;<i>  		sleep_sec(1);
+</I>&gt;<i>  		ch = do_getch();
+</I>&gt;<i>  		if (ch &gt; 0) {
+</I>&gt;<i> @@ -1200,8 +1197,11 @@ prepare_dynmem:
+</I>&gt;<i>  			}
+</I>&gt;<i>  		}
+</I>&gt;<i> 
+</I>&gt;<i> -		if (cfg_act-&gt;empty())
+</I>&gt;<i> +		if (cfg_act-&gt;empty()) {
+</I>&gt;<i> +			if (!pid_is_running(pid, opt.proc_name))
+</I>&gt;<i> +				return 0;
+</I>&gt;<i>  			continue;
+</I>&gt;<i> +		}
+</I>&gt;<i> 
+</I>&gt;<i>  		// allocate old values per memory object
+</I>&gt;<i>  		for (it = cfg_act-&gt;begin(); it != cfg_act-&gt;end(); it++) {
+</I>&gt;<i> @@ -1217,6 +1217,8 @@ prepare_dynmem:
+</I>&gt;<i>  		}
+</I>&gt;<i> 
+</I>&gt;<i>  		if (memattach(pid) != 0) {
+</I>&gt;<i> +			if (!pid_is_running(pid, opt.proc_name))
+</I>&gt;<i> +				return 0;
+</I>&gt;<i>  			cerr &lt;&lt; &quot;PTRACE ATTACH ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; 
+</I>endl;
+&gt;<i>  			return -1;
+</I>&gt;<i>  		}
+</I></PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000049.html">[Ugtrain-devel] [PATCH] ugtrain,	system: Introduce pid_is_running() function
+</A></li>
+	<LI>Next message: <A HREF="000052.html">[Ugtrain-devel] [PATCH V2] ugtrain,	system: Introduce pid_is_running() function
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#51">[ date ]</a>
+              <a href="thread.html#51">[ thread ]</a>
+              <a href="subject.html#51">[ subject ]</a>
+              <a href="author.html#51">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

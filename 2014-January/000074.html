@@ -1,0 +1,167 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain: update victim memory r/w error	messages
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2014-January/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20update%20victim%20memory%20r/w%20error%0A%09messages&In-Reply-To=%3C1388760114-17872-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000073.html">
+   <LINK REL="Next"  HREF="000075.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain: update victim memory r/w error	messages</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20update%20victim%20memory%20r/w%20error%0A%09messages&In-Reply-To=%3C1388760114-17872-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain: update victim memory r/w error	messages">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Fri Jan  3 15:41:54 CET 2014</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000073.html">[Ugtrain-devel] [PATCH] ugtrain: handle ptrace() errors gracefully
+</A></li>
+        <LI>Next message: <A HREF="000075.html">[Ugtrain-devel] [PATCH] ugtrain: read multiple pages from the	dynmem FIFO
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#74">[ date ]</a>
+              <a href="thread.html#74">[ thread ]</a>
+              <a href="subject.html#74">[ subject ]</a>
+              <a href="author.html#74">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>We want to know at which memory address couldn't be read or written
+to. Having the term 'PTRACE' in it isn't good for multi-platform
+support. So change that.
+---
+ src/ugtrain.cpp |   29 +++++++++++++++--------------
+ 1 file changed, 15 insertions(+), 14 deletions(-)
+
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index b929ccc..aefdabe 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -479,8 +479,8 @@ static void change_mem_val (pid_t pid, CfgEntry *cfg_en, T value, u8 *buf, void
+ 				mem_addr = PTR_ADD(void *, mem_offs, it-&gt;addr);
+ 
+ 				if (memread(pid, mem_addr, chk_buf, sizeof(i64)) != 0) {
+-					cerr &lt;&lt; &quot;PTRACE READ MEMORY ERROR PID[&quot;
+-					     &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
++					cerr &lt;&lt; &quot;MEMORY READ ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;] (&quot;
++					     &lt;&lt; hex &lt;&lt; mem_addr &lt;&lt; dec &lt;&lt; &quot;)!&quot; &lt;&lt; endl;
+ 					return;
+ 				}
+ 			}
+@@ -501,7 +501,8 @@ passed:
+ 		mem_addr = PTR_ADD(void *, mem_offs, cfg_en-&gt;addr);
+ 
+ 		if (memwrite(pid, mem_addr, buf, sizeof(i64)) != 0) {
+-			cerr &lt;&lt; &quot;PTRACE WRITE MEMORY ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
++			cerr &lt;&lt; &quot;MEMORY WRITE ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;] (&quot;
++			     &lt;&lt; hex &lt;&lt; mem_addr &lt;&lt; dec &lt;&lt; &quot;)!&quot; &lt;&lt; endl;
+ 			return;
+ 		}
+ 	}
+@@ -530,8 +531,8 @@ static void handle_dynval (pid_t pid, CfgEntry *cfg_en, T read_val,
+ 		} else {
+ 			mem_addr = PTR_ADD(void *, mem_offs, cfg_en-&gt;val_addr);
+ 			if (memread(pid, mem_addr, buf, sizeof(i64)) != 0) {
+-				cerr &lt;&lt; &quot;PTRACE READ MEMORY ERROR PID[&quot;
+-				     &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
++				cerr &lt;&lt; &quot;DYNVAL MEMORY READ ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;] (&quot;
++				     &lt;&lt; hex &lt;&lt; mem_addr &lt;&lt; dec &lt;&lt; &quot;)!&quot; &lt;&lt; endl;
+ 				return;
+ 			}
+ 			*value = *(T *) bufp;
+@@ -652,8 +653,8 @@ static void process_ptrmem (pid_t pid, CfgEntry *cfg_en, u8 *buf, u32 mem_idx)
+ 			cfg_en = *it;
+ 			mem_addr = PTR_ADD(void *, cfg_en-&gt;ptrmem-&gt;v_offs[mem_idx], cfg_en-&gt;addr);
+ 			if (memread(pid, mem_addr, buf, sizeof(i64)) != 0) {
+-				cerr &lt;&lt; &quot;PTRACE READ MEMORY ERROR PID[&quot;
+-				     &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
++				cerr &lt;&lt; &quot;PTR MEMORY READ ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;] (&quot;
++				     &lt;&lt; hex &lt;&lt; mem_addr &lt;&lt; dec &lt;&lt; &quot;)!&quot; &lt;&lt; endl;
+ 				continue;
+ 			}
+ 			change_memory(pid, cfg_en, buf, cfg_en-&gt;ptrmem-&gt;v_offs[mem_idx],
+@@ -1440,7 +1441,7 @@ prepare_dynmem:
+ 	set_getch_nb(1);
+ 
+ 	if (memattach_test(pid) != 0) {
+-		cerr &lt;&lt; &quot;PTRACE ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
++		cerr &lt;&lt; &quot;MEMORY ATTACHING TEST ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
+ 		return -1;
+ 	}
+ 
+@@ -1511,7 +1512,7 @@ prepare_dynmem:
+ 		if (memattach(pid) != 0) {
+ 			if (!pid_is_running(pid, opt.proc_name, true))
+ 				return 0;
+-			cerr &lt;&lt; &quot;PTRACE ATTACH ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
++			cerr &lt;&lt; &quot;MEMORY ATTACH ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
+ 			continue;
+ 		}
+ 
+@@ -1529,8 +1530,8 @@ prepare_dynmem:
+ 
+ 					mem_addr = PTR_ADD(void *, mem_offs, cfg_en-&gt;addr);
+ 					if (memread(pid, mem_addr, buf, sizeof(i64)) != 0) {
+-						cerr &lt;&lt; &quot;PTRACE READ MEMORY ERROR PID[&quot;
+-						     &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
++						cerr &lt;&lt; &quot;MEMORY READ ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;] (&quot;
++						     &lt;&lt; hex &lt;&lt; mem_addr &lt;&lt; dec &lt;&lt; &quot;)!&quot; &lt;&lt; endl;
+ 						continue;
+ 					}
+ 					if (cfg_en-&gt;ptrtgt)
+@@ -1544,8 +1545,8 @@ prepare_dynmem:
+ 
+ 				mem_addr = cfg_en-&gt;addr;
+ 				if (memread(pid, mem_addr, buf, sizeof(i64)) != 0) {
+-					cerr &lt;&lt; &quot;PTRACE READ MEMORY ERROR PID[&quot;
+-					     &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
++					cerr &lt;&lt; &quot;MEMORY READ ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;] (&quot;
++					     &lt;&lt; hex &lt;&lt; mem_addr &lt;&lt; dec &lt;&lt; &quot;)!&quot; &lt;&lt; endl;
+ 					continue;
+ 				}
+ 				change_memory(pid, cfg_en, buf, mem_offs, &amp;cfg_en-&gt;old_val);
+@@ -1553,7 +1554,7 @@ prepare_dynmem:
+ 		}
+ 
+ 		if (memdetach(pid) != 0) {
+-			cerr &lt;&lt; &quot;PTRACE DETACH ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
++			cerr &lt;&lt; &quot;MEMORY DETACH ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
+ 			return -1;
+ 		}
+ 
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000073.html">[Ugtrain-devel] [PATCH] ugtrain: handle ptrace() errors gracefully
+</A></li>
+	<LI>Next message: <A HREF="000075.html">[Ugtrain-devel] [PATCH] ugtrain: read multiple pages from the	dynmem FIFO
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#74">[ date ]</a>
+              <a href="thread.html#74">[ thread ]</a>
+              <a href="subject.html#74">[ subject ]</a>
+              <a href="author.html#74">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

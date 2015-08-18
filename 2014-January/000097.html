@@ -1,0 +1,428 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain: move the dynmem object dump to new	files
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2014-January/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20move%20the%20dynmem%20object%20dump%20to%20new%0A%09files&In-Reply-To=%3C1390601328-12660-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000096.html">
+   <LINK REL="Next"  HREF="000098.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain: move the dynmem object dump to new	files</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20move%20the%20dynmem%20object%20dump%20to%20new%0A%09files&In-Reply-To=%3C1390601328-12660-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain: move the dynmem object dump to new	files">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Fri Jan 24 23:08:48 CET 2014</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000096.html">[Ugtrain-devel] [PATCH] ugtrain: move the config output to new files
+</A></li>
+        <LI>Next message: <A HREF="000098.html">[Ugtrain-devel] [PATCH] ugtrain: fix/add support for float checks
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#97">[ date ]</a>
+              <a href="thread.html#97">[ thread ]</a>
+              <a href="subject.html#97">[ subject ]</a>
+              <a href="author.html#97">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>src/dump.cpp
+src/dump.h
+
+Functionality is exactly the same.
+---
+ src/Makefile.am   |    2 +
+ src/cfgoutput.cpp |    7 ----
+ src/ugtrain.cpp   |  117 +----------------------------------------------------
+ 3 files changed, 3 insertions(+), 123 deletions(-)
+
+diff --git a/src/Makefile.am b/src/Makefile.am
+index 3b09cc6..ad34855 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -7,6 +7,7 @@ ugtrain_SOURCES = common.h \
+                   cfgparser.h \
+                   cfgoutput.h \
+                   fifoparser.h \
++                  dump.h \
+                   discovery.h \
+                   commont.cpp \
+                   common.cpp \
+@@ -21,6 +22,7 @@ ugtrain_SOURCES = common.h \
+                   memattach_l.c \
+                   memattach_w.c \
+                   fifoparser.cpp \
++                  dump.cpp \
+                   discovery.cpp
+ 
+ ugtrain_LDADD = $(DEPS_LIBS)
+diff --git a/src/cfgoutput.cpp b/src/cfgoutput.cpp
+index d4d136d..d2d621b 100644
+--- a/src/cfgoutput.cpp
++++ b/src/cfgoutput.cpp
+@@ -12,13 +12,6 @@
+  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  * GNU General Public License for more details.
+- *
+- * By the original authors of ugtrain there shall be ABSOLUTELY
+- * NO RESPONSIBILITY or LIABILITY for derived work and/or abusive
+- * or malicious use. The ugtrain is an education project and
+- * sticks to the copyright law by providing configs for games
+- * which ALLOW CHEATING only. We can't and we don't accept abusive
+- * configs or codes which might turn ugtrain into a cracker tool!
+  */
+ 
+ #include &lt;cstring&gt;
+diff --git a/src/dump.cpp b/src/dump.cpp
+new file mode 100644
+index 0000000..7c7674c
+--- /dev/null
++++ b/src/dump.cpp
+@@ -0,0 +1,136 @@
++/* dump.cpp:    dump dynamic memory objects in process memory
++ *
++ * Copyright (c) 2012..13, by:  Sebastian Riemer
++ *    All rights reserved.     &lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">sebastian.riemer at gmx.de</A>&gt;
++ *
++ * powered by the Open Game Cheating Association
++ *
++ * This file may be used subject to the terms and conditions of the
++ * GNU General Public License Version 2, or any later version
++ * at your option, as published by the Free Software Foundation.
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#include &lt;fcntl.h&gt;
++
++// local includes
++#include &quot;dump.h&quot;
++#include &quot;memattach.h&quot;
++
++
++static void dump_ptr_mem (pid_t pid, u32 obj_id, u32 ptr_id,
++			  void *mem_addr, size_t size)
++{
++	i32 fd;
++	string fname;
++	char buf[size];
++	ssize_t wbytes;
++
++	if (memattach(pid) != 0)
++		goto err;
++	if (memread(pid, mem_addr, buf, sizeof(buf)) != 0)
++		goto err_detach;
++	memdetach(pid);
++
++	fname += &quot;p&quot;;
++	fname += to_string(ptr_id);
++	fname += &quot;_&quot;;
++	if (obj_id &lt; 100)
++		fname += &quot;0&quot;;
++	if (obj_id &lt; 10)
++		fname += &quot;0&quot;;
++	fname += to_string(obj_id);
++	fname += &quot;.dump&quot;;
++
++	fd = open(fname.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0644);
++	if (fd &lt; 0)
++		goto err;
++	wbytes = write(fd, buf, sizeof(buf));
++	if (wbytes &lt; (ssize_t) sizeof(buf))
++		cerr &lt;&lt; fname &lt;&lt; &quot;: Write error!&quot; &lt;&lt; endl;
++	close(fd);
++	return;
++err_detach:
++	memdetach(pid);
++err:
++	return;
++}
++
++static void dump_mem_obj (pid_t pid, u32 class_id, u32 obj_id,
++			  void *mem_addr, size_t size)
++{
++	i32 fd;
++	string fname;
++	char buf[size];
++	ssize_t wbytes;
++
++	if (memattach(pid) != 0)
++		goto err;
++	if (memread(pid, mem_addr, buf, sizeof(buf)) != 0)
++		goto err_detach;
++	memdetach(pid);
++
++	fname = to_string(class_id);
++	fname += &quot;_&quot;;
++	if (obj_id &lt; 100)
++		fname += &quot;0&quot;;
++	if (obj_id &lt; 10)
++		fname += &quot;0&quot;;
++	fname += to_string(obj_id);
++	fname += &quot;.dump&quot;;
++
++	fd = open(fname.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0644);
++	if (fd &lt; 0)
++		goto err;
++	wbytes = write(fd, buf, sizeof(buf));
++	if (wbytes &lt; (ssize_t) sizeof(buf))
++		cerr &lt;&lt; fname &lt;&lt; &quot;: Write error!&quot; &lt;&lt; endl;
++	close(fd);
++	return;
++err_detach:
++	memdetach(pid);
++err:
++	return;
++}
++
++void dump_all_mem_obj (pid_t pid, list&lt;CfgEntry&gt; *cfg)
++{
++	DynMemEntry *old_dynmem = NULL;
++	u32 class_id = 0, obj_id = 0, ptr_id = 0, i;
++	list&lt;CfgEntry&gt;::iterator it;
++
++	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
++		if (it-&gt;dynmem &amp;&amp; it-&gt;dynmem != old_dynmem) {
++			obj_id = 0;
++			for (i = 0; i &lt; it-&gt;dynmem-&gt;v_maddr.size(); i++) {
++				cout &lt;&lt; &quot;&gt;&gt;&gt; Dumping Class &quot; &lt;&lt; class_id
++				     &lt;&lt; &quot; Obj &quot; &lt;&lt; obj_id &lt;&lt; &quot; at &quot;
++				     &lt;&lt; it-&gt;dynmem-&gt;v_maddr[obj_id] &lt;&lt; endl;
++				dump_mem_obj(pid, class_id, obj_id,
++					     it-&gt;dynmem-&gt;v_maddr[obj_id],
++					     it-&gt;dynmem-&gt;mem_size);
++				obj_id++;
++			}
++			class_id++;
++			old_dynmem = it-&gt;dynmem;
++		}
++	}
++
++	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
++		if (it-&gt;dynmem &amp;&amp; it-&gt;ptrtgt) {
++			obj_id = 0;
++			for (i = 0; i &lt; it-&gt;dynmem-&gt;v_maddr.size(); i++) {
++				if ((u64)it-&gt;v_oldval[obj_id] &gt; 0 &amp;&amp;
++				    it-&gt;ptrtgt-&gt;v_state[obj_id] &gt;= PTR_SETTLED)
++					dump_ptr_mem(pid, obj_id, ptr_id,
++						     (void *) it-&gt;v_oldval[obj_id],
++						     it-&gt;ptrtgt-&gt;mem_size);
++				obj_id++;
++			}
++			ptr_id++;
++		}
++	}
++}
+diff --git a/src/dump.h b/src/dump.h
+new file mode 100644
+index 0000000..9ee01f0
+--- /dev/null
++++ b/src/dump.h
+@@ -0,0 +1,26 @@
++/* dump.h:    dump dynamic memory objects in process memory
++ *
++ * Copyright (c) 2012..13, by:  Sebastian Riemer
++ *    All rights reserved.     &lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">sebastian.riemer at gmx.de</A>&gt;
++ *
++ * powered by the Open Game Cheating Association
++ *
++ * This file may be used subject to the terms and conditions of the
++ * GNU General Public License Version 2, or any later version
++ * at your option, as published by the Free Software Foundation.
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#ifndef DUMP_H
++#define DUMP_H
++
++#include &lt;list&gt;
++#include &quot;common.h&quot;
++#include &quot;cfgentry.h&quot;
++
++void dump_all_mem_obj (pid_t pid, list&lt;CfgEntry&gt; *cfg);
++
++#endif
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index 42d3cbe..997f5e9 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -40,6 +40,7 @@
+ #include &quot;cfgentry.h&quot;
+ #include &quot;cfgparser.h&quot;
+ #include &quot;cfgoutput.h&quot;
++#include &quot;dump.h&quot;
+ #include &quot;system.h&quot;
+ #include &quot;getch.h&quot;
+ #include &quot;memattach.h&quot;
+@@ -51,83 +52,6 @@
+ #define DYNMEM_OUT &quot;/tmp/memhack_in&quot;
+ 
+ 
+-
+-
+-static void dump_ptr_mem (pid_t pid, u32 obj_id, u32 ptr_id,
+-			  void *mem_addr, size_t size)
+-{
+-	i32 fd;
+-	string fname;
+-	char buf[size];
+-	ssize_t wbytes;
+-
+-	if (memattach(pid) != 0)
+-		goto err;
+-	if (memread(pid, mem_addr, buf, sizeof(buf)) != 0)
+-		goto err_detach;
+-	memdetach(pid);
+-
+-	fname += &quot;p&quot;;
+-	fname += to_string(ptr_id);
+-	fname += &quot;_&quot;;
+-	if (obj_id &lt; 100)
+-		fname += &quot;0&quot;;
+-	if (obj_id &lt; 10)
+-		fname += &quot;0&quot;;
+-	fname += to_string(obj_id);
+-	fname += &quot;.dump&quot;;
+-
+-	fd = open(fname.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0644);
+-	if (fd &lt; 0)
+-		goto err;
+-	wbytes = write(fd, buf, sizeof(buf));
+-	if (wbytes &lt; (ssize_t) sizeof(buf))
+-		cerr &lt;&lt; fname &lt;&lt; &quot;: Write error!&quot; &lt;&lt; endl;
+-	close(fd);
+-	return;
+-err_detach:
+-	memdetach(pid);
+-err:
+-	return;
+-}
+-
+-static void dump_mem_obj (pid_t pid, u32 class_id, u32 obj_id,
+-			  void *mem_addr, size_t size)
+-{
+-	i32 fd;
+-	string fname;
+-	char buf[size];
+-	ssize_t wbytes;
+-
+-	if (memattach(pid) != 0)
+-		goto err;
+-	if (memread(pid, mem_addr, buf, sizeof(buf)) != 0)
+-		goto err_detach;
+-	memdetach(pid);
+-
+-	fname = to_string(class_id);
+-	fname += &quot;_&quot;;
+-	if (obj_id &lt; 100)
+-		fname += &quot;0&quot;;
+-	if (obj_id &lt; 10)
+-		fname += &quot;0&quot;;
+-	fname += to_string(obj_id);
+-	fname += &quot;.dump&quot;;
+-
+-	fd = open(fname.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0644);
+-	if (fd &lt; 0)
+-		goto err;
+-	wbytes = write(fd, buf, sizeof(buf));
+-	if (wbytes &lt; (ssize_t) sizeof(buf))
+-		cerr &lt;&lt; fname &lt;&lt; &quot;: Write error!&quot; &lt;&lt; endl;
+-	close(fd);
+-	return;
+-err_detach:
+-	memdetach(pid);
+-err:
+-	return;
+-}
+-
+ static void inc_dec_mvec_pridx (list&lt;CfgEntry&gt; *cfg, bool do_inc)
+ {
+ 	DynMemEntry *old_dynmem = NULL;
+@@ -144,45 +68,6 @@ static void inc_dec_mvec_pridx (list&lt;CfgEntry&gt; *cfg, bool do_inc)
+ 	}
+ }
+ 
+-static void dump_all_mem_obj (pid_t pid, list&lt;CfgEntry&gt; *cfg)
+-{
+-	DynMemEntry *old_dynmem = NULL;
+-	u32 class_id = 0, obj_id = 0, ptr_id = 0, i;
+-	list&lt;CfgEntry&gt;::iterator it;
+-
+-	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
+-		if (it-&gt;dynmem &amp;&amp; it-&gt;dynmem != old_dynmem) {
+-			obj_id = 0;
+-			for (i = 0; i &lt; it-&gt;dynmem-&gt;v_maddr.size(); i++) {
+-				cout &lt;&lt; &quot;&gt;&gt;&gt; Dumping Class &quot; &lt;&lt; class_id
+-				     &lt;&lt; &quot; Obj &quot; &lt;&lt; obj_id &lt;&lt; &quot; at &quot;
+-				     &lt;&lt; it-&gt;dynmem-&gt;v_maddr[obj_id] &lt;&lt; endl;
+-				dump_mem_obj(pid, class_id, obj_id,
+-					     it-&gt;dynmem-&gt;v_maddr[obj_id],
+-					     it-&gt;dynmem-&gt;mem_size);
+-				obj_id++;
+-			}
+-			class_id++;
+-			old_dynmem = it-&gt;dynmem;
+-		}
+-	}
+-
+-	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
+-		if (it-&gt;dynmem &amp;&amp; it-&gt;ptrtgt) {
+-			obj_id = 0;
+-			for (i = 0; i &lt; it-&gt;dynmem-&gt;v_maddr.size(); i++) {
+-				if ((u64)it-&gt;v_oldval[obj_id] &gt; 0 &amp;&amp;
+-				    it-&gt;ptrtgt-&gt;v_state[obj_id] &gt;= PTR_SETTLED)
+-					dump_ptr_mem(pid, obj_id, ptr_id,
+-						     (void *) it-&gt;v_oldval[obj_id],
+-						     it-&gt;ptrtgt-&gt;mem_size);
+-				obj_id++;
+-			}
+-			ptr_id++;
+-		}
+-	}
+-}
+-
+ static void toggle_cfg (list&lt;CfgEntry*&gt; *key_cfg, list&lt;CfgEntry*&gt; *cfg_act)
+ {
+ 	bool found;
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000096.html">[Ugtrain-devel] [PATCH] ugtrain: move the config output to new files
+</A></li>
+	<LI>Next message: <A HREF="000098.html">[Ugtrain-devel] [PATCH] ugtrain: fix/add support for float checks
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#97">[ date ]</a>
+              <a href="thread.html#97">[ thread ]</a>
+              <a href="subject.html#97">[ subject ]</a>
+              <a href="author.html#97">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

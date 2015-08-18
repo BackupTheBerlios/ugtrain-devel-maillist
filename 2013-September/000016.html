@@ -1,0 +1,200 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] examples: add adaption to Warzone 2100	64-bit
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-September/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20examples%3A%20add%20adaption%20to%20Warzone%202100%0A%0964-bit&In-Reply-To=%3C1380525732-4984-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000015.html">
+   <LINK REL="Next"  HREF="000017.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] examples: add adaption to Warzone 2100	64-bit</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20examples%3A%20add%20adaption%20to%20Warzone%202100%0A%0964-bit&In-Reply-To=%3C1380525732-4984-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] examples: add adaption to Warzone 2100	64-bit">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Mon Sep 30 09:22:12 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000015.html">[Ugtrain-devel] [PATCH] discovery: add DEBUG_PARSING compiling	option
+</A></li>
+        <LI>Next message: <A HREF="000017.html">[Ugtrain-devel] [PATCH] ugtrain: add disclaimer to major headers
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#16">[ date ]</a>
+              <a href="thread.html#16">[ thread ]</a>
+              <a href="subject.html#16">[ subject ]</a>
+              <a href="author.html#16">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>The adaption is not completely ready yet as there are also major
+differences between game versions but for version 3.1.0 it works
+at least. There are also still issues with the multiple stack
+offsets.
+
+We also increase the maximum body points for Droids to 2000.
+&gt;<i>From these the actual body points are read. This makes our
+</I>droids more difficult to destroy.
+---
+ examples/adapt/warzone2100_adapt64.sh | 65 +++++++++++++++++++++++++++++++++++
+ examples/warzone2100-64.conf          | 19 +++++++---
+ 2 files changed, 80 insertions(+), 4 deletions(-)
+ create mode 100755 examples/adapt/warzone2100_adapt64.sh
+
+diff --git a/examples/adapt/warzone2100_adapt64.sh b/examples/adapt/warzone2100_adapt64.sh
+new file mode 100755
+index 0000000..0a52116
+--- /dev/null
++++ b/examples/adapt/warzone2100_adapt64.sh
+@@ -0,0 +1,65 @@
++#!/bin/bash
++
++# The issue is that code address and stack offset for mallocs can differ
++# from distribution to distribution. But the thing which remains constant
++# is often the way how the code internally works.
++
++# Warzone 2100 3.1.0
++
++# We already know that warzone2100 is a 64-bit C++ application and that
++# the DROID and Structure classes are allocated with _Znwm().
++# From previous discovery runs we already know the malloc size (864 or
++# 0x360) for the object (DROID) in which the BODY POINTS are stored. The
++# Structure object has the malloc size 424 or 0x1a8.
++
++CWD=`dirname $0`
++cd &quot;$CWD&quot;
++APP_PATH=`which warzone2100`
++APP_VERS=`warzone2100 --version | grep -o &quot;Version.*&quot; | cut -d ' ' -f 2`
++
++IFS=`printf '\n+'`
++CODE_PART=`objdump -D &quot;$APP_PATH&quot; | grep &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; -B 2 -A 1 | grep -A 3 0x360`
++if [ &quot;$CODE_PART&quot; == &quot;&quot; ]; then exit 1; fi
++
++CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
++if [ $CODE_LINES -ne 4 ]; then exit 1; fi
++
++CODE_CALL=`echo -e &quot;$CODE_PART&quot; | cut -d '
++' -f 3 | grep call`
++if [ &quot;$CODE_CALL&quot; == &quot;&quot; ]; then exit 1; fi
++
++CODE_ADDR=`echo -e &quot;$CODE_PART&quot; | cut -d '
++' -f 4 | cut -d ':' -f 1 | tr -d [:blank:]`
++if [ &quot;$CODE_ADDR&quot; == &quot;&quot; ]; then exit 1; fi
++
++############################################
++
++CODE_PART2=`objdump -D &quot;$APP_PATH&quot; | grep &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; -B 2 -A 1 | grep -A 3 0x1a8 | tail -n 4`
++if [ &quot;$CODE_PART2&quot; == &quot;&quot; ]; then exit 1; fi
++
++CODE_LINES2=`echo -e &quot;$CODE_PART2&quot; | wc -l`
++if [ $CODE_LINES2 -ne 4 ]; then exit 1; fi
++
++CODE_CALL2=`echo -e &quot;$CODE_PART2&quot; | cut -d '
++' -f 3 | grep call`
++if [ &quot;$CODE_CALL2&quot; == &quot;&quot; ]; then exit 1; fi
++
++CODE_ADDR2=`echo -e &quot;$CODE_PART2&quot; | cut -d '
++' -f 4 | cut -d ':' -f 1 | tr -d [:blank:]`
++if [ &quot;$CODE_ADDR2&quot; == &quot;&quot; ]; then exit 1; fi
++IFS=''
++
++RESULT=`echo &quot;2;Droid;0x$CODE_ADDR;Structure;0x$CODE_ADDR2&quot;`
++echo &quot;$RESULT&quot;
++
++# Should return something like this:
++#  4a6c4d:       bf 60 03 00 00          mov    $0x360,%edi
++#  4a6c52:       41 89 c6                mov    %eax,%r14d
++#  4a6c55:       e8 b6 8a fb ff          callq  45f710 &lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>&gt;
++#  4a6c5a:       89 ea                   mov    %ebp,%edx
++
++# This shows us that 0x4a6c5a is the relevant Droid code address.
++
++# We can jump directly to stage 4 of the discovery with that and leave the
++# heap start and end offsets at 0x0 (NULL) as we already know the unique
++# code address and malloc size.
+diff --git a/examples/warzone2100-64.conf b/examples/warzone2100-64.conf
+index a8d4fcb..dff05a1 100644
+--- a/examples/warzone2100-64.conf
++++ b/examples/warzone2100-64.conf
+@@ -30,14 +30,19 @@ dynmemstack 0x5098
+ # Building a droid has another stack offset.
+ dynmemstack 0x3b18
+ 
+-# Read the max. 'body' value from 'originalBody' value
+-# to avoid nasty assert failed messages.
+-Body 0x70 u16 l 0x1bc 4,9 a
++# Increase the maximum body points
++MaxBody 0x1bc u16 l 2000 4,9 a
++check 0x1bc u16 g 2
+ check 0x70 u16 g 2
+ 
+ # Player ID 0 droid? (The AI has 6 and 7 in level 1.)
+ checko 0x22 u8 l 1
+ 
++# Read the max. 'body' value from 'originalBody' value
++# to avoid nasty assert failed messages.
++Body 0x70 u16 l 0x1bc 4,9 a
++check 0x70 u16 g 2
++
+ # Experience: From zero to hero
+ Kills 0x1c2 u16 l 1024 5,9 a
+ check 0x70 u16 g 2
+@@ -50,9 +55,12 @@ dynmemend
+ 
+ dynmemstart Structure 424 0x5dbe4e 0x3d48
+ 
+-# Loading structure from a savegame has another stack offset
++# Loading structure from a savegame
+ dynmemstack 0x4d88
+ 
++# Mission start (only AI in single-player)
++dynmemign 0x4318
++
+ SBody 0x70 u16 l 2000 6,9 a
+ check 0x70 u16 g 2
+ 
+@@ -61,6 +69,9 @@ checko 0x22 u8 l 1
+ 
+ dynmemend
+ 
++adapt_script adapt/warzone2100_adapt64.sh
++adapt_required 1
++
+ 
+ # The bools are easy to discover:
+ # 0. run the game and &quot;scanmem&quot;
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000015.html">[Ugtrain-devel] [PATCH] discovery: add DEBUG_PARSING compiling	option
+</A></li>
+	<LI>Next message: <A HREF="000017.html">[Ugtrain-devel] [PATCH] ugtrain: add disclaimer to major headers
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#16">[ date ]</a>
+              <a href="thread.html#16">[ thread ]</a>
+              <a href="subject.html#16">[ subject ]</a>
+              <a href="author.html#16">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

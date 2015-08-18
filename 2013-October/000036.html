@@ -1,0 +1,285 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] examples: update README and 64 bit configs
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-October/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20examples%3A%20update%20README%20and%2064%20bit%20configs&In-Reply-To=%3C1381823046-5122-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000035.html">
+   <LINK REL="Next"  HREF="000037.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] examples: update README and 64 bit configs</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20examples%3A%20update%20README%20and%2064%20bit%20configs&In-Reply-To=%3C1381823046-5122-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] examples: update README and 64 bit configs">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Tue Oct 15 09:44:06 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000035.html">[Ugtrain-devel] [PATCH] linuxhooking,	ugtrain: switch over to reverse stack offset
+</A></li>
+        <LI>Next message: <A HREF="000037.html">[Ugtrain-devel] [PATCH] ugtrain: add '--glc' option for video	recording
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#36">[ date ]</a>
+              <a href="thread.html#36">[ thread ]</a>
+              <a href="subject.html#36">[ subject ]</a>
+              <a href="author.html#36">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>We have to change them as we use the reverse stack offset, now.
+We also add a 64 bit config for Warzone2100 2.3.8. They've
+changed the way how objects are allocated, object sizes and
+datatypes compared to version 3.1.0. There is no chance to
+automatically adapt that.
+---
+ examples/README                  | 15 +------
+ examples/chromium-bsu64.conf     |  4 +-
+ examples/warzone2100-64.conf     | 31 ++++-----------
+ examples/warzone2100_238-64.conf | 86 ++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 97 insertions(+), 39 deletions(-)
+ create mode 100644 examples/warzone2100_238-64.conf
+
+diff --git a/examples/README b/examples/README
+index 61ad838..72c9184 100644
+--- a/examples/README
++++ b/examples/README
+@@ -56,25 +56,12 @@
+ #
+ #    +++ Dynamic memory (e.g. C++ constructor) +++:
+ #
+-# dynmemstart ObjName ObjSize CodeJumpBackAddrOfMalloc OffsetOfCodeAddrOnStack
++# dynmemstart ObjName ObjSize CodeJumpBackAddrOfMalloc RevOffsOfCodeAddrOnStack
+ #
+ #    The object size is in decimal. The rest are addresses starting with &quot;0x&quot;.
+ #    These come from the dynamic memory discovery (libmemdisc) or from the
+ #    dynamic memory adaption.
+ #
+-# dynmemstack OffsetOfCodeAddrOnStack
+-#
+-#    Upto 8 stack offsets are possible. These are used when allocating objects
+-#    from multiple code locations for multiple purposes (e.g. loading a Droid
+-#    from a savegame and building a Droid in Warzone 2100). During adaption
+-#    all these purposes have to be triggered for successful adaption.
+-#
+-# dynmemign OffsetOfCodeAddrOnStack
+-#
+-#    Like &quot;dynmemstack&quot; but ignored for regular use. This is for adaption
+-#    only. An example is the Structure loading at mission start in Warzone
+-#    2100. This is only used for opponents in single-player mode.
+-#
+ #    &lt; Values + checks like in static memory but with ObjOffset as Addr &gt;
+ #
+ #    Value:
+diff --git a/examples/chromium-bsu64.conf b/examples/chromium-bsu64.conf
+index e5ccdd8..15c98f5 100644
+--- a/examples/chromium-bsu64.conf
++++ b/examples/chromium-bsu64.conf
+@@ -1,6 +1,6 @@
+ chromium-bsu
+ 
+-# Chromium B.S.U. 0.9.15 64-bit Linux
++# Chromium B.S.U. 0.9.15, Gentoo Linux, 64 bit
+ #
+ # $ ugtrain -P libmemhack64.so examples/chromium-bsu64
+ #
+@@ -19,7 +19,7 @@ chromium-bsu
+ # If automatic adaption fails, do full discovery!
+ 
+ 
+-dynmemstart HeroAircraft 288 0x411097 0x198
++dynmemstart HeroAircraft 288 0x40f4e7 0x28
+ 
+ Lives 0xbc i32 l 9 1,9 a
+ check 0xbc i32 g 0
+diff --git a/examples/warzone2100-64.conf b/examples/warzone2100-64.conf
+index ed9d7fb..a354ff2 100644
+--- a/examples/warzone2100-64.conf
++++ b/examples/warzone2100-64.conf
+@@ -1,10 +1,10 @@
+ warzone2100
+ 
+-# Warzone 2100 - Version 3.1.0, Gentoo, 64 bit
++# Warzone 2100 - Version 3.1.0, Gentoo Linux, 64 bit
+ #
+ # $ ugtrain -P libmemhack64.so examples/warzone2100-64
+ #
+-# Looks like we have some static bools here.
++# Looks like we have some static values here.
+ #
+ # Cheaters don't like to be accused to be one. ;-)
+ 
+@@ -16,23 +16,14 @@ check 0x103bf84 i32 g 10
+ 
+ 
+ # Found the body points of an own MG Viper droid with scanmem
+-# by using &quot;snapshot&quot;, shooting at it, using &quot;&lt;&quot; and &quot;=&quot;.
++# by using 'snapshot', shooting at it, using '&lt;' and '='.
+ # Found out that it has 205 body points initially.
+-
++#
+ # The game starts with 47 droids of which only 7 are our
+ # own droids. The memory object dump ('&gt;' key during run)
+-# and the tool ugsimfind are very useful here.
+-
+-dynmemstart Droid 864 0x4a6c5a 0x4088
+-
+-# Loading droids from a savegame
+-dynmemstack 0x5098
++# and the tool 'ugsimfind' are very useful here.
+ 
+-# Building a droid
+-dynmemstack 0x3b18
+-
+-# Multiplayer mission start
+-dynmemstack 0x4fe8
++dynmemstart Droid 864 0x4a6c5a 0x28
+ 
+ # Increase the maximum body points
+ DMaxBody 0x1bc u16 l 2000 4,9 a
+@@ -55,16 +46,10 @@ dynmemend
+ 
+ 
+ # Found the body points of the command station with scanmem
+-# by using &quot;snapshot&quot;, shooting at it, using &quot;&lt;&quot; and &quot;=&quot;.
++# by using 'snapshot', shooting at it, using '&lt;' and '='.
+ # Found out that it has 500 body points initially.
+ 
+-dynmemstart Structure 424 0x5dbe4e 0x3d48
+-
+-# Loading structure from a savegame
+-dynmemstack 0x4d88
+-
+-# Mission start (only AI in single-player)
+-dynmemign 0x4318
++dynmemstart Structure 424 0x5dbe4e 0x28
+ 
+ SBody 0x70 u16 l 2000 6,9 a
+ check 0x70 u16 g 2
+diff --git a/examples/warzone2100_238-64.conf b/examples/warzone2100_238-64.conf
+new file mode 100644
+index 0000000..c83f6d5
+--- /dev/null
++++ b/examples/warzone2100_238-64.conf
+@@ -0,0 +1,86 @@
++warzone2100
++
++# Warzone 2100 - Version 2.3.8, Gentoo Linux, 64 bit
++#
++# $ ugtrain -P libmemhack64.so examples/warzone2100_238-64
++#
++# Looks like we have some static values here.
++#
++# Cheaters don't like to be accused to be one. ;-)
++
++Cheated 0xc91ba0 u8 g 0 1,9 a
++DebugEn 0xcfae50 u8 l 1 2,9 a
++
++Power 0x1212180 i32 l 5000 3,9 a
++check 0x1212180 i32 g 10
++
++
++# Found the body points of an own MG Viper droid with scanmem
++# by using 'snapshot', shooting at it, using '&lt;' and '='.
++# Found out that it has 205 body points initially.
++#
++# The game starts with 47 droids of which only 7 are our
++# own droids. The memory object dump ('&gt;' key during run)
++# and the tool 'ugsimfind' are very useful here.
++
++dynmemstart Droid 1040 0x56c0ba 0x8
++
++# Increase the maximum body points
++DMaxBody 0x1d4 u16 l 2000 4,9 a
++check 0x1d4 u16 g 2
++check 0x5c u16 g 2
++
++# Player ID 0 droid? (The AI has 6 and 7 in level 1.)
++checko 0x40 u8 l 1
++
++# Read the max. 'body' value from 'originalBody' value
++# to avoid nasty assert failed messages.
++DBody 0x5c u16 l 0x1d4 4,9 a
++check 0x5c u16 g 2
++
++# Experience: From zero to hero
++Kills 0x1d8 f32 l 1024.0 5,9 a
++check 0x5c u16 g 2
++
++dynmemend
++
++
++# Found the body points of the command station with scanmem
++# by using 'snapshot', shooting at it, using '&lt;' and '='.
++# Found out that it has 500 body points initially.
++
++dynmemstart Structure 352 0x56c0aa 0x8
++
++SBody 0x5c u16 l 2000 6,9 a
++check 0x5c u16 g 2
++
++# Player ID 0 structure? (The AI has 6 and 7 in level 1.)
++checko 0x40 u8 l 1
++
++dynmemend
++
++
++# Adaption
++adapt_script adapt/warzone2100_adapt64.sh
++adapt_required 1
++
++
++# The bools are easy to discover:
++# 0. run the game and &quot;scanmem&quot;
++# 1. start a new campaign
++# 2. search for 0
++# 3. activate cheats
++# 4. use a cheat
++# 5. search for 1
++# 6. jump to step 1 until two matches are found
++
++# real variable names in the game source:
++# Cheated: Cheated, src/cheat.cpp
++# DebugEn: bDoingDebugMappings, src/keymap.cpp
++# Power: asPower[0].currentPower, src/power.cpp
++
++# The currentPower is an i64 fixed point value with 32 bit before the
++# point and 32 bit after it. We were lucky to find it as i32 this way.
++# For ugtrain only these 32 bit count.
++
++# Please read examples/README for the syntax description
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000035.html">[Ugtrain-devel] [PATCH] linuxhooking,	ugtrain: switch over to reverse stack offset
+</A></li>
+	<LI>Next message: <A HREF="000037.html">[Ugtrain-devel] [PATCH] ugtrain: add '--glc' option for video	recording
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#36">[ date ]</a>
+              <a href="thread.html#36">[ thread ]</a>
+              <a href="subject.html#36">[ subject ]</a>
+              <a href="author.html#36">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

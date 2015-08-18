@@ -1,0 +1,759 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 3/3] ugtrain: prepare Windows support
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-August/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%203/3%5D%20ugtrain%3A%20prepare%20Windows%20support&In-Reply-To=%3C1377759120-7329-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000002.html">
+   <LINK REL="Next"  HREF="000004.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 3/3] ugtrain: prepare Windows support</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%203/3%5D%20ugtrain%3A%20prepare%20Windows%20support&In-Reply-To=%3C1377759120-7329-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 3/3] ugtrain: prepare Windows support">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Thu Aug 29 08:52:00 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000002.html">[Ugtrain-devel] [PATCH 2/3] autotools: don't compile linuxhooking	on non-linux
+</A></li>
+        <LI>Next message: <A HREF="000004.html">[Ugtrain-devel] [PATCH] examples: add warzone2100 32-bit adaption
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#3">[ date ]</a>
+              <a href="thread.html#3">[ thread ]</a>
+              <a href="subject.html#3">[ subject ]</a>
+              <a href="author.html#3">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>We use the MinGW compiler to build for Windows.
+
+The ugtrain compiles for Windows, now. But the Windows specific
+functionality is not implemented, yet.
+
+Changes:
+* add Windows specific files
+* implement stubs for Windows specific parts
+* use %lu instead of %zd format specifier
+* replace S_* flags with octal code for open() with O_CREATE
+* deactivate FIFO handling for Windows
+* define missing types and defines for Windows
+* implement multi-platform sleep_sec() function
+---
+ .gitignore         |  2 ++
+ src/Makefile.am    |  3 ++
+ src/common.h       | 10 +++++++
+ src/discovery.cpp  | 12 ++++----
+ src/fifoparser.cpp |  9 ++++--
+ src/fifoparser.h   |  2 +-
+ src/getch_l.c      |  4 +++
+ src/getch_w.c      | 51 ++++++++++++++++++++++++++++++++
+ src/memattach.h    | 13 ++++----
+ src/memattach_l.c  | 15 ++++++----
+ src/memattach_w.c  | 50 +++++++++++++++++++++++++++++++
+ src/system.h       | 16 ++++++++++
+ src/system_l.c     |  4 +++
+ src/system_w.c     | 87 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/ugtrain.cpp    | 28 ++++++++++++------
+ 15 files changed, 276 insertions(+), 30 deletions(-)
+ create mode 100644 src/getch_w.c
+ create mode 100644 src/memattach_w.c
+ create mode 100644 src/system_w.c
+
+diff --git a/.gitignore b/.gitignore
+index 1ce0093..b811e87 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -15,6 +15,7 @@ INSTALL
+ *.la
+ *.lo
+ *.o
++*.exe
+ ltmain.sh
+ libtool
+ m4
+@@ -22,3 +23,4 @@ missing
+ src/ugtrain
+ scanmem_extension/scanmem
+ linuxhooking/ugpreload
++tools/ugsimfind
+diff --git a/src/Makefile.am b/src/Makefile.am
+index ce6627a..8cf8e09 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -13,8 +13,11 @@ ugtrain_SOURCES = common.h \
+                   options.c \
+                   cfgparser.cpp \
+                   getch_l.c \
++                  getch_w.c \
+                   system_l.c \
++                  system_w.c \
+                   memattach_l.c \
++                  memattach_w.c \
+                   fifoparser.cpp \
+                   discovery.cpp
+ 
+diff --git a/src/common.h b/src/common.h
+index 517a780..c663a46 100644
+--- a/src/common.h
++++ b/src/common.h
+@@ -19,6 +19,7 @@
+ #ifndef COMMON_H
+ #define COMMON_H
+ 
++#include &lt;limits.h&gt;
+ #ifdef __cplusplus
+ #include &lt;iostream&gt;
+ #include &lt;string&gt;
+@@ -34,6 +35,10 @@ typedef int i32;
+ typedef unsigned int u32;
+ typedef long long i64;
+ typedef unsigned long long u64;
++typedef unsigned long ulong;
++#ifndef __linux__
++typedef int pid_t;
++#endif
+ 
+ #ifdef __i386__
+ typedef u32 ptr_t;
+@@ -41,6 +46,11 @@ typedef u32 ptr_t;
+ typedef u64 ptr_t;
+ #endif
+ 
++// for Windows as not in limits.h
++#ifndef PIPE_BUF
++#define PIPE_BUF 4096
++#endif
++
+ // Common macros
+ #define PTR_ADD(type, x, y)  (type) ((ptr_t)x + (ptr_t)y)
+ #define PTR_SUB(type, x, y)  (type) ((ptr_t)x - (ptr_t)y)
+diff --git a/src/discovery.cpp b/src/discovery.cpp
+index e9557cf..482bb8f 100644
+--- a/src/discovery.cpp
++++ b/src/discovery.cpp
+@@ -127,7 +127,7 @@ static void process_disc1234_malloc (list&lt;CfgEntry&gt; *cfg,
+ 				     struct post_parse *pp,
+ 				     void *heap_start,
+ 				     void *mem_addr,
+-				     ssize_t mem_size,
++				     size_t mem_size,
+ 				     void *code_addr,
+ 				     void *stack_offs)
+ {
+@@ -276,7 +276,7 @@ static void process_disc5_output (list&lt;CfgEntry&gt; *cfg,
+ 				  struct post_parse *pp,
+ 				  void *heap_start,
+ 				  void *mem_addr,
+-				  ssize_t mem_size,
++				  size_t mem_size,
+ 				  void *code_addr,
+ 				  void *stack_offs)
+ {
+@@ -313,7 +313,7 @@ out:
+ void run_stage5_loop (list&lt;CfgEntry&gt; *cfg, i32 ifd, i32 pmask, pid_t pid)
+ {
+ 	while (1) {
+-		sleep(1);
++		sleep_sec(1);
+ 		read_dynmem_buf(cfg, NULL, ifd, pmask, process_disc5_output,
+ 				NULL);
+ 		if (memattach_test(pid) != 0) {
+@@ -332,7 +332,7 @@ void run_stage1234_loop (void *argp)
+ 	ssize_t rbytes, wbytes;
+ 
+ 	ofd = open(DYNMEM_FILE, O_WRONLY | O_CREAT | O_TRUNC,
+-		   S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
++		   0644);
+ 	if (ofd &lt; 0) {
+ 		perror(&quot;open ofd&quot;);
+ 		exit(1);
+@@ -360,7 +360,7 @@ i32 prepare_discovery (struct app_options *opt, list&lt;CfgEntry&gt; *cfg)
+ 	int i, ret;
+ 	list&lt;CfgEntry&gt;::iterator it;
+ 	void *heap_soffs, *heap_eoffs, *bt_saddr, *bt_eaddr;
+-	size_t mem_size;
++	ulong mem_size;
+ 	char pbuf[PIPE_BUF] = { 0 };
+ 
+ 	if (!opt-&gt;disc_str)
+@@ -382,7 +382,7 @@ i32 prepare_discovery (struct app_options *opt, list&lt;CfgEntry&gt; *cfg)
+ 		break;
+ 	case '3':
+ 	case '4':
+-		ret = sscanf(&amp;opt-&gt;disc_str[1], &quot;;%p;%p;%zd;%p;%p&quot;, &amp;heap_soffs,
++		ret = sscanf(&amp;opt-&gt;disc_str[1], &quot;;%p;%p;%lu;%p;%p&quot;, &amp;heap_soffs,
+ 			     &amp;heap_eoffs, &amp;mem_size, &amp;bt_saddr, &amp;bt_eaddr);
+ 		if (ret &lt; 3) {
+ 			cerr &lt;&lt; &quot;Error: Not enough arguments for discovery &quot;
+diff --git a/src/fifoparser.cpp b/src/fifoparser.cpp
+index c33a42a..206f1fc 100644
+--- a/src/fifoparser.cpp
++++ b/src/fifoparser.cpp
+@@ -19,17 +19,20 @@
+ #include &lt;cstring&gt;
+ #include &lt;stdio.h&gt;
+ #include &lt;limits.h&gt;
++#include &lt;unistd.h&gt;
+ #include &quot;fifoparser.h&quot;
+ 
++
+ i32 read_dynmem_buf (list&lt;CfgEntry&gt; *cfg, void *argp, i32 ifd, int pmask,
+ 		     void (*mf)(list&lt;CfgEntry&gt; *, struct post_parse *, void *,
+-				void *, ssize_t, void *, void *),
++				void *, size_t, void *, void *),
+ 		     void (*ff)(list&lt;CfgEntry&gt; *, void *, void *))
+ {
+ 	void *mem_addr = NULL, *code_addr = NULL, *stack_offs = NULL;
+ 	static void *heap_start = NULL;
+ 	static ssize_t ipos = 0, ilen = 0;
+-	ssize_t mem_size = 0, tmp_ilen, ppos = 0;
++	ulong mem_size = 0;
++	ssize_t tmp_ilen, ppos = 0;
+ 	char *msg_end, *sep_pos;
+ 	static char ibuf[PIPE_BUF] = { 0 };
+ 	char scan_ch;
+@@ -67,7 +70,7 @@ next:
+ 			    scan_ch != 's')
+ 				goto parse_err;
+ 			ppos++;
+-			if (sscanf(ibuf + ppos, &quot;%zd&quot;, &amp;mem_size) != 1)
++			if (sscanf(ibuf + ppos, &quot;%lu&quot;, &amp;mem_size) != 1)
+ 				goto parse_err;
+ skip_s:
+ 			if (!(pmask &amp; PARSE_C))
+diff --git a/src/fifoparser.h b/src/fifoparser.h
+index 60f67f6..eb914d6 100644
+--- a/src/fifoparser.h
++++ b/src/fifoparser.h
+@@ -36,6 +36,6 @@ struct post_parse {
+ 
+ i32 read_dynmem_buf (list&lt;CfgEntry&gt; *cfg, void *argp, i32 ifd, int pmask,
+ 		     void (*mf)(list&lt;CfgEntry&gt; *, struct post_parse *, void *,
+-				void *, ssize_t, void *, void *),
++				void *, size_t, void *, void *),
+ 		     void (*ff)(list&lt;CfgEntry&gt; *, void *, void *));
+ #endif
+diff --git a/src/getch_l.c b/src/getch_l.c
+index 8afba92..030f8f0 100644
+--- a/src/getch_l.c
++++ b/src/getch_l.c
+@@ -16,6 +16,8 @@
+  * GNU General Public License for more details.
+  */
+ 
++#ifdef __linux__
++
+ #include &lt;termios.h&gt;
+ #include &lt;unistd.h&gt;
+ #include &lt;fcntl.h&gt;
+@@ -94,3 +96,5 @@ void restore_getch (void)
+ 		tty_changed = 0;
+ 	}
+ }
++
++#endif
+diff --git a/src/getch_w.c b/src/getch_w.c
+new file mode 100644
+index 0000000..f11f534
+--- /dev/null
++++ b/src/getch_w.c
+@@ -0,0 +1,51 @@
++/* getch_w.c:    getch() for Windows with system functions
++ *
++ * Copyright (c) 2013, by:      Sebastian Riemer
++ *    All rights reserved.      Ernst-Reinke-Str. 23
++ *                              10369 Berlin, Germany
++ *                             &lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">sebastian.riemer at gmx.de</A>&gt;
++ *
++ * powered by the Open Game Cheating Association
++ *
++ * This file may be used subject to the terms and conditions of the
++ * GNU General Public License Version 2, or any later version
++ * at your option, as published by the Free Software Foundation.
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#if defined(__WINNT__) || defined (__WIN32__)
++
++/* local includes */
++#include &quot;getch.h&quot;
++
++int prepare_getch (void)
++{
++	return 0;
++}
++
++int prepare_getch_nb (void)
++{
++	int rc;
++
++	rc = prepare_getch();
++	return rc;
++}
++
++char do_getch (void)
++{
++	char ch = '\0';
++	return ch;
++}
++
++void set_getch_nb (int nb)
++{
++}
++
++void restore_getch (void)
++{
++}
++
++#endif
+diff --git a/src/memattach.h b/src/memattach.h
+index 8bbaf46..3cdcf7b 100644
+--- a/src/memattach.h
++++ b/src/memattach.h
+@@ -6,7 +6,6 @@
+  *                             &lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">sebastian.riemer at gmx.de</A>&gt;
+  *
+  * powered by the Open Game Cheating Association
+- * based on libgcheater by Alf &lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">h980501427 at hotmail.com</A>&gt;
+  *
+  * This file may be used subject to the terms and conditions of the
+  * GNU General Public License Version 2, or any later version
+@@ -20,14 +19,16 @@
+ #ifndef MEMATTACH_H
+ #define MEMATTACH_H
+ 
++#include &quot;common.h&quot;
++
+ #ifdef __cplusplus
+ extern &quot;C&quot; {
+ #endif
+-	int memattach_test (pid_t pid);
+-	int memattach (pid_t pid);
+-	int memdetach (pid_t pid);
+-	int memread   (pid_t pid, void* addr, void* buf, long buf_len);
+-	int memwrite  (pid_t pid, void* addr, void* buf, long buf_len);
++	i32 memattach_test (pid_t pid);
++	i32 memattach (pid_t pid);
++	i32 memdetach (pid_t pid);
++	i32 memread   (pid_t pid, void *addr, void *buf, long buf_len);
++	i32 memwrite  (pid_t pid, void *addr, void *buf, long buf_len);
+ #ifdef __cplusplus
+ };
+ #endif
+diff --git a/src/memattach_l.c b/src/memattach_l.c
+index b7ccab2..763357c 100644
+--- a/src/memattach_l.c
++++ b/src/memattach_l.c
+@@ -18,6 +18,8 @@
+  * GNU General Public License for more details.
+  */
+ 
++#ifdef __linux__
++
+ #include &lt;unistd.h&gt;
+ #include &lt;string.h&gt;
+ #include &lt;sys/types.h&gt;
+@@ -25,9 +27,10 @@
+ #include &lt;sys/ptrace.h&gt;
+ #include &lt;sys/wait.h&gt;
+ #include &lt;errno.h&gt;
++#include &quot;memattach.h&quot;
+ 
+ 
+-int memattach_test(pid_t pid)
++i32 memattach_test (pid_t pid)
+ {
+ 	if (pid &lt;= 1)
+ 		goto err;
+@@ -48,7 +51,7 @@ err:
+ 	return -1;
+ }
+ 
+-int memattach(pid_t pid)
++i32 memattach (pid_t pid)
+ {
+ 	if (pid &lt;= 1)
+ 		goto err;
+@@ -68,7 +71,7 @@ err:
+ 	return -1;
+ }
+ 
+-int memdetach(pid_t pid)
++i32 memdetach (pid_t pid)
+ {
+ 	if (pid &lt;= 1)
+ 		goto err;
+@@ -83,7 +86,7 @@ err:
+ 	return -1;
+ }
+ 
+-int memread(pid_t pid, void* addr, void* buf, long buf_len)
++i32 memread (pid_t pid, void *addr, void *buf, long buf_len)
+ {
+ 	long read_val = 0;
+ 	long pos = 0;      /* position in sizeof(long) steps */
+@@ -116,7 +119,7 @@ err:
+ 	return -1;
+ }
+ 
+-int memwrite(pid_t pid, void* addr, void* buf, long buf_len)
++i32 memwrite (pid_t pid, void *addr, void *buf, long buf_len)
+ {
+ 	long rw_val = 0;
+ 	long pos = 0;      /* position in sizeof(long) steps */
+@@ -151,3 +154,5 @@ int memwrite(pid_t pid, void* addr, void* buf, long buf_len)
+ err:
+ 	return -1;
+ }
++
++#endif
+diff --git a/src/memattach_w.c b/src/memattach_w.c
+new file mode 100644
+index 0000000..74ee36a
+--- /dev/null
++++ b/src/memattach_w.c
+@@ -0,0 +1,50 @@
++/* memattach_w.c:    functions to attach/read/write victim proc. memory
++ * This file is for Windows only.
++ *
++ * Copyright (c) 2013, by:      Sebastian Riemer
++ *    All rights reserved.      Ernst-Reinke-Str. 23
++ *                              10369 Berlin, Germany
++ *                             &lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">sebastian.riemer at gmx.de</A>&gt;
++ *
++ * powered by the Open Game Cheating Association
++ *
++ * This file may be used subject to the terms and conditions of the
++ * GNU General Public License Version 2, or any later version
++ * at your option, as published by the Free Software Foundation.
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#if defined(__WINNT__) || defined (__WIN32__)
++
++#include &quot;memattach.h&quot;
++
++
++i32 memattach_test (pid_t pid)
++{
++	return -1;
++}
++
++i32 memattach (pid_t pid)
++{
++	return -1;
++}
++
++i32 memdetach (pid_t pid)
++{
++	return -1;
++}
++
++i32 memread (pid_t pid, void *addr, void *buf, long buf_len)
++{
++	return -1;
++}
++
++i32 memwrite (pid_t pid, void *addr, void *buf, long buf_len)
++{
++	return -1;
++}
++
++#endif
+diff --git a/src/system.h b/src/system.h
+index 248ddd9..2b4b91b 100644
+--- a/src/system.h
++++ b/src/system.h
+@@ -21,6 +21,22 @@
+ 
+ #include &lt;unistd.h&gt;
+ #include &quot;common.h&quot;
++#ifndef __linux__
++#include &lt;windows.h&gt;
++#endif
++
++#ifdef __linux__
++static inline u32 sleep_sec (u32 sec)
++{
++	return sleep(sec);
++}
++#else
++static inline void sleep_sec (u32 sec)
++{
++	Sleep(sec * 1000);
++}
++#endif
++
+ 
+ #ifdef __cplusplus
+ extern &quot;C&quot; {
+diff --git a/src/system_l.c b/src/system_l.c
+index 58c4196..fcb101c 100644
+--- a/src/system_l.c
++++ b/src/system_l.c
+@@ -16,6 +16,8 @@
+  * GNU General Public License for more details.
+  */
+ 
++#ifdef __linux__
++
+ #include &lt;stdlib.h&gt;
+ #include &lt;stdio.h&gt;
+ #include &lt;ctype.h&gt;
+@@ -200,3 +202,5 @@ err:
+ 	fprintf(stderr, &quot;PID not found or invalid!\n&quot;);
+ 	return -1;
+ }
++
++#endif
+diff --git a/src/system_w.c b/src/system_w.c
+new file mode 100644
+index 0000000..216941d
+--- /dev/null
++++ b/src/system_w.c
+@@ -0,0 +1,87 @@
++/* system_w.c:    provide OS specific helpers (e.g. run cmds)
++ *
++ * Copyright (c) 2013, by:      Sebastian Riemer
++ *    All rights reserved.      Ernst-Reinke-Str. 23
++ *                              10369 Berlin, Germany
++ *                             &lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">sebastian.riemer at gmx.de</A>&gt;
++ *
++ * powered by the Open Game Cheating Association
++ *
++ * This file may be used subject to the terms and conditions of the
++ * GNU General Public License Version 2, or any later version
++ * at your option, as published by the Free Software Foundation.
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#if defined(__WINNT__) || defined (__WIN32__)
++
++#include &quot;common.h&quot;
++#include &quot;system.h&quot;
++
++
++/*
++ * Run a task in background, wait for a process to end and
++ * then kill the task in the background.
++ *
++ * If the pid to wait for is invalid, then we wait for the
++ * task to end without killing it.
++ *
++ * Parameters: pid to wait for, task function pointer,
++ *             void *argument for the task
++ * Returns: 0 for success, -1 for failure
++ *
++ * Please note: The task has to cast the argument pointer to its
++ *              correct type again. If more arguments are required,
++ *              please use a structure.
++ */
++i32 fork_wait_kill (pid_t wpid, void (*task) (void *), void *argp)
++{
++	return -1;
++}
++
++/*
++ * Run a command in background.
++ *
++ * Parameters: execvp params, wait for the process 0/1
++ * Returns: 0 for success, -1 for failure
++ */
++i32 run_cmd_bg (const char *cmd, char *const cmdv[], u8 do_wait)
++{
++	return -1;
++}
++
++/*
++ * Run a command in the background, wait for it
++ * and get its result string from a pipe.
++ *
++ * Parameters: execvp params, pipe buffer, its size,
++ *             run the command in a shell 0/1
++ * Returns: what read() returns or -1
++ *
++ * Please note: If the shell is used, then execlp is
++ *              used with cmd and cmdv[] is ignored.
++ */
++ssize_t run_cmd_pipe (const char *cmd, char *const cmdv[], char *pbuf,
++		      size_t pbuf_size, u8 use_shell)
++{
++	return -1;
++}
++
++/*
++ * Get the pid of a process name.
++ *
++ * We always get the first pid we find in case
++ * of multiple instances.
++ *
++ * Parameters: the process name
++ * Returns: the pid or -1
++ */
++pid_t proc_to_pid (char *proc_name)
++{
++	return -1;
++}
++
++#endif
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index 211bcf3..d8e2e36 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -166,8 +166,7 @@ static void dump_mem_obj (pid_t pid, u32 class_id, u32 obj_id,
+ 	fname += to_string(obj_id);
+ 	fname += &quot;.dump&quot;;
+ 
+-	fd = open(fname.c_str(), O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR |
+-		  S_IWUSR | S_IRGRP | S_IROTH);
++	fd = open(fname.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0644);
+ 	if (fd &lt; 0)
+ 		goto err;
+ 	wbytes = write(fd, buf, sizeof(buf));
+@@ -482,6 +481,7 @@ err:
+ 	return ret;
+ }
+ 
++#ifdef __linux__
+ static i32 run_preloader (char *preload_lib, char *proc_name)
+ {
+ 	i32 ret;
+@@ -505,6 +505,7 @@ err:
+ 	cerr &lt;&lt; &quot;Error while running preloader!&quot; &lt;&lt; endl;
+ 	return ret;
+ }
++#endif
+ 
+ static i32 prepare_dynmem (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 			   i32 *ifd, i32 *ofd)
+@@ -512,9 +513,11 @@ static i32 prepare_dynmem (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 	char obuf[PIPE_BUF] = { 0 };
+ 	u32 num_cfg = 0, num_cfg_len = 0, pos = 0;
+ 	i32 i;
+-	size_t written;
+ 	void *old_code_addr = NULL;
+ 	list&lt;CfgEntry&gt;::iterator it;
++#ifdef __linux__
++	size_t written;
++#endif
+ 
+ 	// check for discovery first
+ 	if (opt-&gt;disc_str) {
+@@ -534,7 +537,7 @@ static i32 prepare_dynmem (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 		if (it-&gt;dynmem &amp;&amp; it-&gt;dynmem-&gt;code_addr != old_code_addr) {
+ 			num_cfg++;
+ 			pos += snprintf(obuf + pos, sizeof(obuf) - pos,
+-				&quot;;%zd;%p&quot;, it-&gt;dynmem-&gt;mem_size,
++				&quot;;%lu;%p&quot;, (ulong) it-&gt;dynmem-&gt;mem_size,
+ 				it-&gt;dynmem-&gt;code_addr);
+ 			for (i = 0; i &lt; MAX_STACK; i++)
+ 				pos += snprintf(obuf + pos, sizeof(obuf) - pos,
+@@ -558,6 +561,7 @@ static i32 prepare_dynmem (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 		return 0;
+ 
+ skip_memhack:
++#ifdef __linux__
+ 	// remove FIFOs first for empty FIFOs
+ 	if ((unlink(DYNMEM_IN) &amp;&amp; errno != ENOENT) ||
+ 	    (unlink(DYNMEM_OUT) &amp;&amp; errno != ENOENT)) {
+@@ -615,7 +619,7 @@ skip_memhack:
+ 		perror(&quot;FIFO write&quot;);
+ 		return 1;
+ 	}
+-
++#endif
+ 	return 0;
+ }
+ 
+@@ -691,8 +695,10 @@ static i32 adapt_config (list&lt;CfgEntry&gt; *cfg, char *adp_script)
+ 		NULL
+ 	};
+ 
++#ifdef __linux__
+ 	if (getuid() == 0)
+ 		goto err;
++#endif
+ 
+ 	read_bytes = run_cmd_pipe(cmd, cmdv, pbuf, sizeof(pbuf), 0);
+ 	if (read_bytes &lt;= 0)
+@@ -717,7 +723,7 @@ void set_dynmem_addr (list&lt;CfgEntry&gt; *cfg,
+ 		      struct post_parse *pp,
+ 		      void *heap_start,
+ 		      void *mem_addr,
+-		      ssize_t mem_size,
++		      size_t mem_size,
+ 		      void *code_addr,
+ 		      void *stack_offs)
+ {
+@@ -889,10 +895,14 @@ prepare_dynmem:
+ 	pid = proc_to_pid(opt.proc_name);
+ 	if (pid &lt; 0) {
+ 		/* Run the game but not as root */
+-		if (opt.preload_lib &amp;&amp; getuid() != 0) {
++		if (opt.preload_lib) {
++#ifdef __linux__
++			if (getuid() == 0)
++				return -1;
++#endif
+ 			cout &lt;&lt; &quot;Starting the game..&quot; &lt;&lt; endl;
+ 			run_game(opt.proc_name);
+-			sleep(1);
++			sleep_sec(1);
+ 			pid = proc_to_pid(opt.proc_name);
+ 			if (pid &lt; 0)
+ 				return -1;
+@@ -932,7 +942,7 @@ prepare_dynmem:
+ 	}
+ 
+ 	while (1) {
+-		sleep(1);
++		sleep_sec(1);
+ 		ch = do_getch();
+ 		if (ch &gt; 0) {
+ 			if (cfgp_map[(i32)ch])
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000002.html">[Ugtrain-devel] [PATCH 2/3] autotools: don't compile linuxhooking	on non-linux
+</A></li>
+	<LI>Next message: <A HREF="000004.html">[Ugtrain-devel] [PATCH] examples: add warzone2100 32-bit adaption
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#3">[ date ]</a>
+              <a href="thread.html#3">[ thread ]</a>
+              <a href="subject.html#3">[ subject ]</a>
+              <a href="author.html#3">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

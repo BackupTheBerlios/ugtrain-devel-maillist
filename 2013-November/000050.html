@@ -1,0 +1,94 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 5/5] ugtrain: do not attach memory if no	active config
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-November/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%205/5%5D%20ugtrain%3A%20do%20not%20attach%20memory%20if%20no%0A%09active%20config&In-Reply-To=%3C2294324.qBZi8BOeGK%40basti-pc%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000047.html">
+   <LINK REL="Next"  HREF="000048.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 5/5] ugtrain: do not attach memory if no	active config</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%205/5%5D%20ugtrain%3A%20do%20not%20attach%20memory%20if%20no%0A%09active%20config&In-Reply-To=%3C2294324.qBZi8BOeGK%40basti-pc%3E"
+       TITLE="[Ugtrain-devel] [PATCH 5/5] ugtrain: do not attach memory if no	active config">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Tue Nov 12 10:09:43 CET 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000047.html">[Ugtrain-devel] [PATCH 5/5] ugtrain: do not attach memory if no	active config
+</A></li>
+        <LI>Next message: <A HREF="000048.html">[Ugtrain-devel] [PATCH] Fix &quot;ugtrain: do not attach memory if no	active config&quot;
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#50">[ date ]</a>
+              <a href="thread.html#50">[ thread ]</a>
+              <a href="subject.html#50">[ subject ]</a>
+              <a href="author.html#50">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Damn, nobody told me here that a 'continue' can do better!
+I've sent a fix commit for this.
+
+Sebastian Riemer:
+&gt;<i> If all values are disabled, then there is no need for attaching to
+</I>&gt;<i> the game memory. Instead, an external tool like 'scanmem' has its
+</I>&gt;<i> chance to attach to game memory and to read some values.
+</I>&gt;<i> ---
+</I>&gt;<i>  src/ugtrain.cpp |    4 ++++
+</I>&gt;<i>  1 file changed, 4 insertions(+)
+</I>&gt;<i> 
+</I>&gt;<i> diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+</I>&gt;<i> index b58b7db..f4f13d4 100644
+</I>&gt;<i> --- a/src/ugtrain.cpp
+</I>&gt;<i> +++ b/src/ugtrain.cpp
+</I>&gt;<i> @@ -1213,6 +1213,9 @@ prepare_dynmem:
+</I>&gt;<i>  			}
+</I>&gt;<i>  		}
+</I>&gt;<i> 
+</I>&gt;<i> +		if (cfg_act-&gt;empty())
+</I>&gt;<i> +			goto skip_inactive;
+</I>&gt;<i> +
+</I>&gt;<i>  		if (memattach(pid) != 0) {
+</I>&gt;<i>  			cerr &lt;&lt; &quot;PTRACE ATTACH ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; 
+</I>endl;
+&gt;<i>  			return -1;
+</I>&gt;<i> @@ -1257,6 +1260,7 @@ prepare_dynmem:
+</I>&gt;<i>  			return -1;
+</I>&gt;<i>  		}
+</I>&gt;<i> 
+</I>&gt;<i> +skip_inactive:
+</I>&gt;<i>  		// remove old values marked to be removed by object check
+</I>&gt;<i>  		for (it = cfg_act-&gt;begin(); it != cfg_act-&gt;end(); it++) {
+</I>&gt;<i>  			cfg_en = *it;
+</I></PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000047.html">[Ugtrain-devel] [PATCH 5/5] ugtrain: do not attach memory if no	active config
+</A></li>
+	<LI>Next message: <A HREF="000048.html">[Ugtrain-devel] [PATCH] Fix &quot;ugtrain: do not attach memory if no	active config&quot;
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#50">[ date ]</a>
+              <a href="thread.html#50">[ thread ]</a>
+              <a href="subject.html#50">[ subject ]</a>
+              <a href="author.html#50">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,334 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 1/2] ugtrain: introduce 'or' checks
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-December/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%201/2%5D%20ugtrain%3A%20introduce%20%27or%27%20checks&In-Reply-To=%3C1385854174-14497-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000067.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 1/2] ugtrain: introduce 'or' checks</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%201/2%5D%20ugtrain%3A%20introduce%20%27or%27%20checks&In-Reply-To=%3C1385854174-14497-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 1/2] ugtrain: introduce 'or' checks">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Sun Dec  1 00:29:34 CET 2013</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000067.html">[Ugtrain-devel] [PATCH 2/2] examples: warzone2100: 32-bit: cheat	Cyborg and VTOL factories
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#66">[ date ]</a>
+              <a href="thread.html#66">[ thread ]</a>
+              <a href="subject.html#66">[ subject ]</a>
+              <a href="author.html#66">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>We need to check a value with multiple checks linked by 'or'. This
+is especially useful to reduce the number of configured values and
+type checks. So introduce 'or' checks.
+
+Example: Droid, Cyborg and VTOL factories in Warzone 2100 use the
+same functionality (factory) data structure.
+---
+ src/cfgentry.h    |    9 +++++---
+ src/cfgparser.cpp |   42 +++++++++++++++++++-----------------
+ src/ugtrain.cpp   |   61 +++++++++++++++++++++++++++++++----------------------
+ 3 files changed, 65 insertions(+), 47 deletions(-)
+
+diff --git a/src/cfgentry.h b/src/cfgentry.h
+index 9e0a1e6..baa0552 100644
+--- a/src/cfgentry.h
++++ b/src/cfgentry.h
+@@ -78,9 +78,12 @@ typedef enum {
+ 	CHECK_OFF,
+ 	CHECK_LT,
+ 	CHECK_GT,
+-	CHECK_EQ
++	CHECK_EQ,
++	CHECK_END,
+ } check_e;
+ 
++#define MAX_CHK_VALS 4  // for &quot;or&quot; checks
++
+ class CheckEntry {
+ public:
+ 	void *addr;
+@@ -89,8 +92,8 @@ public:
+ 	bool is_signed;
+ 	bool is_float;
+ 	i32 size;
+-	check_e check;
+-	i64 value;
++	check_e check[MAX_CHK_VALS + 1];
++	i64 value[MAX_CHK_VALS + 1];
+ };
+ 
+ class CfgEntry {
+diff --git a/src/cfgparser.cpp b/src/cfgparser.cpp
+index 5ccd2b6..6daba0f 100644
+--- a/src/cfgparser.cpp
++++ b/src/cfgparser.cpp
+@@ -266,7 +266,7 @@ static i32 parse_data_type (string *line, u32 lnr, u32 *start,
+  *            We always parse floats as doubles here.
+  */
+ static i64 parse_value (string *line, u32 lnr, u32 *start, bool is_signed,
+-		        bool is_float, dynval_e *dynval, check_e *check)
++		        bool is_float, dynval_e *dynval, check_e *check, u32 i)
+ {
+ 	u32 lidx;
+ 	i64 ret = 0;
+@@ -279,8 +279,12 @@ static i64 parse_value (string *line, u32 lnr, u32 *start, bool is_signed,
+ 		goto skip_check;
+ 
+ 	// determine check
+-	if (lidx + 2 &gt; line-&gt;length())
+-		cfg_parse_err(line, lnr, --lidx);
++	if (lidx + 2 &gt; line-&gt;length()) {
++		if (i == 0)
++			cfg_parse_err(line, lnr, --lidx);
++		*check = CHECK_END;
++		return 0;
++	}
+ 	if (line-&gt;at(lidx) == 'l' &amp;&amp; line-&gt;at(lidx + 1) == ' ') {
+ 		*check = CHECK_LT;
+ 		*start += 2;
+@@ -417,7 +421,7 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 	list&lt;CheckEntry&gt; *chk_lp;
+ 	DynMemEntry *dynmem_enp = NULL;
+ 	PtrMemEntry *ptrmem_enp = NULL;
+-	u32 lnr, start = 0;
++	u32 i, lnr, start = 0;
+ 	name_e name_type;
+ 	bool in_dynmem = false, in_ptrmem = false;
+ 	string line;
+@@ -439,8 +443,14 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 
+ 		cfg_en.name = parse_value_name(&amp;line, lnr, &amp;start, &amp;name_type);
+ 		switch (name_type) {
+-		case NAME_CHECK:
+ 		case NAME_CHECK_OBJ:
++			if (!in_dynmem)
++				cfg_parse_err(&amp;line, lnr, start);
++		case NAME_CHECK:
++			if (name_type == NAME_CHECK_OBJ)
++				chk_en.is_objcheck = true;
++			else
++				chk_en.is_objcheck = false;
+ 			cfg_enp = &amp;cfg-&gt;back();
+ 			if (!cfg_enp-&gt;checks)
+ 				cfg_enp-&gt;checks = new list&lt;CheckEntry&gt;();
+@@ -450,16 +460,10 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			chk_en.addr = parse_address(cfg, &amp;chk_en, &amp;line, lnr, &amp;start);
+ 			chk_en.size = parse_data_type(&amp;line, lnr, &amp;start,
+ 				&amp;chk_en.is_signed, &amp;chk_en.is_float);
+-			chk_en.value = parse_value(&amp;line, lnr, &amp;start, chk_en.is_signed,
+-				chk_en.is_float, NULL, &amp;chk_en.check);
+-
+-			if (name_type == NAME_CHECK_OBJ) {
+-				if (!in_dynmem)
+-					cfg_parse_err(&amp;line, lnr, start);
+-				chk_en.is_objcheck = true;
+-			} else {
+-				chk_en.is_objcheck = false;
+-			}
++			for (i = 0; i &lt; MAX_CHK_VALS; i++)
++				chk_en.value[i] = parse_value(&amp;line, lnr, &amp;start, chk_en.is_signed,
++					chk_en.is_float, NULL, &amp;chk_en.check[i], i);
++			chk_en.check[MAX_CHK_VALS] = CHECK_END;
+ 			chk_lp-&gt;push_back(chk_en);
+ 			break;
+ 
+@@ -471,7 +475,7 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			dynmem_enp-&gt;name = parse_value_name(&amp;line, lnr,
+ 				&amp;start, NULL);
+ 			dynmem_enp-&gt;mem_size = parse_value(&amp;line, lnr,
+-				&amp;start, false, false, NULL, NULL);
++				&amp;start, false, false, NULL, NULL, 0);
+ 			dynmem_enp-&gt;code_addr = parse_address(cfg, NULL, &amp;line, lnr, &amp;start);
+ 			dynmem_enp-&gt;stack_offs = parse_address(cfg, NULL, &amp;line, lnr, &amp;start);
+ 			dynmem_enp-&gt;v_maddr.clear();
+@@ -495,7 +499,7 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			ptrmem_enp-&gt;name = parse_value_name(&amp;line, lnr,
+ 				&amp;start, NULL);
+ 			ptrmem_enp-&gt;mem_size = parse_value(&amp;line, lnr,
+-				&amp;start, false, false, NULL, NULL);
++				&amp;start, false, false, NULL, NULL, 0);
+ 			break;
+ 
+ 		case NAME_PTRMEM_END:
+@@ -527,7 +531,7 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 				cfg_parse_err(&amp;line, lnr, start);
+ 
+ 			if (parse_value(&amp;line, lnr, &amp;start,
+-					false, false, NULL, NULL))
++					false, false, NULL, NULL, 0))
+ 				opt-&gt;adp_required = true;
+ 			opt-&gt;adp_req_line = lnr;
+ 			break;
+@@ -576,7 +580,7 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			}
+ 
+ 			cfg_en.value = parse_value(&amp;line, lnr, &amp;start, cfg_en.is_signed,
+-				cfg_en.is_float, &amp;cfg_en.dynval, &amp;cfg_en.check);
++				cfg_en.is_float, &amp;cfg_en.dynval, &amp;cfg_en.check, 0);
+ 			if (cfg_en.dynval == DYN_VAL_ADDR)
+ 				cfg_en.val_addr = (void *) cfg_en.value;
+ 			if (in_dynmem)
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index 7cbdef9..2c8de1d 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -105,6 +105,7 @@ static void output_checks (CfgEntry *cfg_en)
+ {
+ 	list&lt;CheckEntry&gt; *chk_lp = cfg_en-&gt;checks;
+ 	list&lt;CheckEntry&gt;::iterator it;
++	u32 i;
+ 	double tmp_dval;
+ 	char *check_op = get_check_op(cfg_en-&gt;check);
+ 
+@@ -122,20 +123,24 @@ static void output_checks (CfgEntry *cfg_en)
+ 		return;
+ 
+ 	for (it = chk_lp-&gt;begin(); it != chk_lp-&gt;end(); it++) {
+-		check_op = get_check_op(it-&gt;check);
+-		if (!check_op)
+-			continue;
+-
+ 		if (it-&gt;cfg_ref)
+-			cout &lt;&lt; &quot;    check &quot; &lt;&lt; it-&gt;cfg_ref-&gt;name &lt;&lt; check_op;
++			cout &lt;&lt; &quot;    check &quot; &lt;&lt; it-&gt;cfg_ref-&gt;name;
+ 		else
+-			cout &lt;&lt; &quot;    check &quot; &lt;&lt; hex &lt;&lt; it-&gt;addr &lt;&lt; dec &lt;&lt; check_op;
+-		if (it-&gt;is_float) {
+-			memcpy(&amp;tmp_dval, &amp;it-&gt;value, sizeof(i64));
+-			cout &lt;&lt; tmp_dval &lt;&lt; get_objcheck_str(&amp;(*it)) &lt;&lt; endl;
+-		} else {
+-			cout &lt;&lt; it-&gt;value &lt;&lt; get_objcheck_str(&amp;(*it)) &lt;&lt; endl;
++			cout &lt;&lt; &quot;    check &quot; &lt;&lt; hex &lt;&lt; it-&gt;addr &lt;&lt; dec;
++		for (i = 0; it-&gt;check[i] != CHECK_END; i++) {
++			if (i &gt; 0)
++				cout &lt;&lt; &quot; ||&quot;;
++			check_op = get_check_op(it-&gt;check[i]);
++			cout &lt;&lt; check_op;
++
++			if (it-&gt;is_float) {
++				memcpy(&amp;tmp_dval, &amp;it-&gt;value[i], sizeof(i64));
++				cout &lt;&lt; tmp_dval &lt;&lt; get_objcheck_str(&amp;(*it));
++			} else {
++				cout &lt;&lt; it-&gt;value[i] &lt;&lt; get_objcheck_str(&amp;(*it));
++			}
+ 		}
++		cout &lt;&lt; endl;
+ 	}
+ }
+ 
+@@ -404,29 +409,29 @@ static inline i32 check_mem_val (T value, u8 *chk_buf, check_e check)
+ 	return -1;
+ }
+ 
+-static i32 check_memory (CheckEntry chk_en, u8 *chk_buf)
++static i32 check_memory (CheckEntry chk_en, u8 *chk_buf, u32 i)
+ {
+ 	if (chk_en.is_signed) {
+ 		switch (chk_en.size) {
+ 		case 64:
+-			return check_mem_val((i64) chk_en.value, chk_buf, chk_en.check);
++			return check_mem_val((i64) chk_en.value[i], chk_buf, chk_en.check[i]);
+ 		case 32:
+-			return check_mem_val((i32) chk_en.value, chk_buf, chk_en.check);
++			return check_mem_val((i32) chk_en.value[i], chk_buf, chk_en.check[i]);
+ 		case 16:
+-			return check_mem_val((i16) chk_en.value, chk_buf, chk_en.check);
++			return check_mem_val((i16) chk_en.value[i], chk_buf, chk_en.check[i]);
+ 		default:
+-			return check_mem_val((i8) chk_en.value, chk_buf, chk_en.check);
++			return check_mem_val((i8) chk_en.value[i], chk_buf, chk_en.check[i]);
+ 		}
+ 	} else {
+ 		switch (chk_en.size) {
+ 		case 64:
+-			return check_mem_val((u64) chk_en.value, chk_buf, chk_en.check);
++			return check_mem_val((u64) chk_en.value[i], chk_buf, chk_en.check[i]);
+ 		case 32:
+-			return check_mem_val((u32) chk_en.value, chk_buf, chk_en.check);
++			return check_mem_val((u32) chk_en.value[i], chk_buf, chk_en.check[i]);
+ 		case 16:
+-			return check_mem_val((u16) chk_en.value, chk_buf, chk_en.check);
++			return check_mem_val((u16) chk_en.value[i], chk_buf, chk_en.check[i]);
+ 		default:
+-			return check_mem_val((u8) chk_en.value, chk_buf, chk_en.check);
++			return check_mem_val((u8) chk_en.value[i], chk_buf, chk_en.check[i]);
+ 		}
+ 	}
+ }
+@@ -439,6 +444,7 @@ static void change_mem_val (pid_t pid, CfgEntry *cfg_en, T value, u8 *buf, void
+ 	DynMemEntry *dynmem;
+ 	u8 chk_buf[sizeof(i64)];
+ 	void *mem_addr;
++	u32 i;
+ 
+ 	if (cfg_en-&gt;dynval == DYN_VAL_WATCH)
+ 		return;
+@@ -465,15 +471,20 @@ static void change_mem_val (pid_t pid, CfgEntry *cfg_en, T value, u8 *buf, void
+ 				mem_addr = PTR_ADD(void *, mem_offs, it-&gt;addr);
+ 
+ 				if (memread(pid, mem_addr, chk_buf, sizeof(i64)) != 0) {
+-					cerr &lt;&lt; &quot;PTRACE READ MEMORY ERROR PID[&quot; &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
++					cerr &lt;&lt; &quot;PTRACE READ MEMORY ERROR PID[&quot;
++					     &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
+ 					exit(-1);
+ 				}
+ 			}
+-			if (check_memory(*it, chk_buf) != 0) {
+-				if (it-&gt;is_objcheck)
+-					cfg_en-&gt;dynmem-&gt;v_maddr[cfg_en-&gt;dynmem-&gt;obj_idx] = NULL;
+-				return;
++			for (i = 0; it-&gt;check[i] != CHECK_END; i++) {
++				if (check_memory(*it, chk_buf, i) == 0)
++					goto passed;
+ 			}
++			if (it-&gt;is_objcheck)
++				cfg_en-&gt;dynmem-&gt;v_maddr[cfg_en-&gt;dynmem-&gt;obj_idx] = NULL;
++			return;
++passed:
++			continue;
+ 		}
+ 	}
+ 
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000067.html">[Ugtrain-devel] [PATCH 2/2] examples: warzone2100: 32-bit: cheat	Cyborg and VTOL factories
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#66">[ date ]</a>
+              <a href="thread.html#66">[ thread ]</a>
+              <a href="subject.html#66">[ subject ]</a>
+              <a href="author.html#66">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

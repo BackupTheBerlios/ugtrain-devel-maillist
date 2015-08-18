@@ -1,0 +1,224 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 1/3] README: update dynamic memory features	and general info
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-August/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%201/3%5D%20README%3A%20update%20dynamic%20memory%20features%0A%09and%20general%20info&In-Reply-To=%3C1377758964-7224-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000000.html">
+   <LINK REL="Next"  HREF="000002.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 1/3] README: update dynamic memory features	and general info</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%201/3%5D%20README%3A%20update%20dynamic%20memory%20features%0A%09and%20general%20info&In-Reply-To=%3C1377758964-7224-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 1/3] README: update dynamic memory features	and general info">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Thu Aug 29 08:49:24 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000000.html">[Ugtrain-devel] [PATCH] ugtrain: introduce output_mem_val(),	fix float printing
+</A></li>
+        <LI>Next message: <A HREF="000002.html">[Ugtrain-devel] [PATCH 2/3] autotools: don't compile linuxhooking	on non-linux
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1">[ date ]</a>
+              <a href="thread.html#1">[ thread ]</a>
+              <a href="subject.html#1">[ subject ]</a>
+              <a href="author.html#1">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>The options -P, -D and -A are now mentioned and what they do.
+Also the required environment variable changes are explained,
+now.
+---
+ README | 82 ++++++++++++++++++++++++++++++++++++++++++++++++------------------
+ 1 file changed, 60 insertions(+), 22 deletions(-)
+
+diff --git a/README b/README
+index c41b878..a662569 100644
+--- a/README
++++ b/README
+@@ -2,9 +2,9 @@
+ ### DESCRIPTION ###
+ ###################
+ # The ugtrain is an advanced free universal game trainer for the CLI under
+-# GPLv2 license uploaded on GitHub. The dynamic memory support sets it apart.
+-# A preloader, a memory discovery and a memory hacking library are included
+-# for this.
++# GPLv2 license uploaded on GitHub and BerliOS. The dynamic memory support
++# sets it apart. A preloader, a memory discovery and a memory hacking library
++# are included for this.
+ # The ugtrain uses one simple config file per game which can be exchanged
+ # with others. Examples for games which allow cheating are included.
+ #
+@@ -13,11 +13,11 @@
+ # ### LEGAL WARNING ###
+ #
+ # Don't use game trainers or any other cheating software for commercial
+-# closed source games, for multi-player games or for online games! Please
+-# don't use &quot;ugtrain&quot; for that! You may violate copyright and other laws
+-# by doing so. Recording videos of doing so makes the situation even worse
+-# in terms of law. Please always read the end user license agreement (EULA)
+-# of the game to be very sure if you are really allowed to do so or not!
++# closed source, multi-player or online games! Please don't use &quot;ugtrain&quot;
++# for that! You may violate copyright and other laws by doing so. Recording
++# videos of doing so makes the situation even worse in terms of law. Please
++# always read the end user license agreement (EULA) of the game to be very
++# sure if you are really allowed to do so or not!
+ #
+ # ### Current Limitations ###
+ #
+@@ -26,8 +26,7 @@
+ # Operating System:	Linux-only
+ #
+ # Dynamic Memory:	constructors-only (no growing objects/structures),
+-#			discovery + adaption can be simpler,
+-#			dosn't work for WINE, yet
++#			doesn't work for WINE, yet
+ #
+ # Compilation:		dyn. mem. support can't be deactivated,
+ #			requires multilib support (32+64 bit) for dyn. mem.
+@@ -45,7 +44,7 @@
+ #
+ # ### Why a CLI tool? ###
+ #
+-# CLI is important e.g. if you play full screen in WINE. Some people
++# CLI is important e.g. if you play full-screen on WINE. Some people
+ # start another X session for the game but we don't like that. Moreover,
+ # you will be able to write your own GUI frontend for it. CLI tools can
+ # last decades while GUIs change more frequently.
+@@ -73,7 +72,7 @@
+ # Why is dynamic memory so important and how to hack it?
+ #
+ # Since leaving the good old DOS times, games aren't implemented in C any more
+-# but instead object oriented with e.g. C++. Objects are stored on the heap
++# but instead object-oriented with e.g. C++. Objects are stored on the heap
+ # memory. But Linux uses heap and stack randomization for security. The only
+ # thing which remains constant is the code jump back address of the malloc call
+ # and its offset on the stack memory.
+@@ -87,11 +86,28 @@
+ # the game process still can be called as regular user. The &quot;HeroAircraft&quot;
+ # object of the game &quot;Chromium B.S.U.&quot; is one of the included examples.
+ #
++# In the meanwhile there is a lot of automation and simplification implemented
++# so that the options -P and -D will help you with that. The option -P ensures
++# that ugtrain runs the game in the same process group. This way root is not
++# required any more. The libmemhack is automatically preloaded. With -D the
++# libmemdisc is preloaded instead and after recording the malloc calls it
++# searches for the found memory address from static memory search. This way
++# you get a list of all matching mallocs. Most of the time the last malloc
++# call is the correct one as interesting objects are kept until game end.
++#
++# There is also automatic adaption to game version/compiler/distribution
++# differences. Please have a look at the -A option. The examples will ask
++# you for automatic adaption the first time you run them. You should do
++# so and a shell script based on &quot;objdump -D&quot; and &quot;grep&quot; is called to find
++# the correct code addresses of your game. With that the discovery is run
++# to find the stack offsets. With everything adapted the game starts
++# automatically with the new config and it is written back to disk.
++#
+ # Please read 'TODO' for further information.
+ 
+-############################
+-### HOW TO BUILD AND USE ###
+-############################
++################################
++### HOW TO BUILD AND INSTALL ###
++################################
+ # Make sure that the &quot;autotools-dev&quot; package is installed on your system
+ # together with &quot;autoconf&quot;, &quot;automake&quot; and &quot;libtool&quot;.
+ 
+@@ -107,24 +123,46 @@ make
+ # install ugtrain, ugpreload and the libs to /usr/local
+ sudo make install
+ 
++# (optional:) ensure PATH includes /usr/local/bin
++PATH=$PATH:/usr/local/bin
++
++# (optional:) ensure LD_PATH includes /usr/local/lib*
++LD_PATH=$LD_PATH:/usr/local/lib:/usr/local/lib64
++
++# These pathes simplify file usage. Where to set these environment
++# variables is distribution specific.
++
++# &quot;objdump&quot; and &quot;scanmem&quot; should be installed as well.
++
++##################
++### HOW TO USE ###
++##################
++
+ # Use the compiled tool as follows:
+-ugtrain &lt;config&gt;
++ugtrain [options] &lt;config&gt;
+ 
+ # This searches in the current working directory for the &lt;config&gt;.conf.
+ # If it can't find it there it tries ~/.ugtrain/&lt;config&gt;.conf.
++
++# For details use:
++ugtrain --help
++
+ # Do e.g. the following:
+-cd examples
+-ugtrain chromium-bsu64    # 'ugtrain chromium-bsu64.conf' is also possible
++ugtrain -P examples/chromium-bsu64
+ 
+-# This parses the chromium-bsu64.conf from the examples, searches
+-# for the running instance of the game and starts freezing the
++# This parses the chromium-bsu64.conf from the examples, runs the
++# game preloaded with libmemhack64.so and starts freezing the
+ # configured values. In the examples the config syntax is described.
+ 
++# If it asks you for automatic adaption, you should accept. The
++# adaption can be triggered explicitly as well:
++ugtrain -A examples/chromium-bsu64
++
+ #########################
+ ### HOW TO CONTRIBUTE ###
+ #########################
+ # Please send your patches and improvement suggestions to:
+<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">-sebastian.riemer at gmx.de</A>
+<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">+ugtrain-devel at lists.berlios.de</A>
+ 
+ # And/or if you like Open Game Cheating and want to show it
+ # by becoming a member of the Open Game Cheating Association,
+@@ -132,4 +170,4 @@ <A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">sebastian.riemer at gmx.de</A>
+ # your request:
+ <A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">sebastian.riemer at gmx.de</A>
+ 
+-<A HREF="http://www.github.com/sriemer/og-cheating">http://www.github.com/sriemer/og-cheating</A>
++<A HREF="https://github.com/OpenGameCheatingAssociation/og-cheating">https://github.com/OpenGameCheatingAssociation/og-cheating</A>
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000000.html">[Ugtrain-devel] [PATCH] ugtrain: introduce output_mem_val(),	fix float printing
+</A></li>
+	<LI>Next message: <A HREF="000002.html">[Ugtrain-devel] [PATCH 2/3] autotools: don't compile linuxhooking	on non-linux
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1">[ date ]</a>
+              <a href="thread.html#1">[ thread ]</a>
+              <a href="subject.html#1">[ subject ]</a>
+              <a href="author.html#1">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

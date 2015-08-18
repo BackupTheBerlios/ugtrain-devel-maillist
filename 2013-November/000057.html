@@ -1,0 +1,92 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] libmemdisc: add section check to	find_code_pointers()
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-November/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20libmemdisc%3A%20add%20section%20check%20to%0A%09find_code_pointers%28%29&In-Reply-To=%3C1385018449-26379-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000056.html">
+   <LINK REL="Next"  HREF="000058.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] libmemdisc: add section check to	find_code_pointers()</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20libmemdisc%3A%20add%20section%20check%20to%0A%09find_code_pointers%28%29&In-Reply-To=%3C1385018449-26379-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] libmemdisc: add section check to	find_code_pointers()">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Thu Nov 21 08:20:49 CET 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000056.html">[Ugtrain-devel] [PATCH] libmemdisc: introduce calloc() hooking
+</A></li>
+        <LI>Next message: <A HREF="000058.html">[Ugtrain-devel] [PATCH] libmemhack: introduce calloc() hooking
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#57">[ date ]</a>
+              <a href="thread.html#57">[ thread ]</a>
+              <a href="subject.html#57">[ subject ]</a>
+              <a href="author.html#57">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>We shouldn't be more than 16 MiB away from the stack end. Otherwise,
+we are likely in another section and this can crash our method of
+finding code pointers on the stack.
+
+Found this as GNU backtrace() worked but find_code_pointers()
+crashed the game.
+---
+ linuxhooking/libmemdisc.c |    7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/linuxhooking/libmemdisc.c b/linuxhooking/libmemdisc.c
+index 80dd2f5..200d02c 100644
+--- a/linuxhooking/libmemdisc.c
++++ b/linuxhooking/libmemdisc.c
+@@ -404,6 +404,13 @@ static bool find_code_pointers (void *ffp, char *obuf, i32 *obuf_offs)
+ 	i32 i = 0;
+ 	bool found = false;
+ 
++	/*
++	 * check if we are in the correct section
++	 * -&gt; we shouldn't be more that 16 MiB away
++	 */
++	if (!ffp || ffp &lt; __libc_stack_end - (1 &lt;&lt; 24))
++		return false;
++
+ 	for (offs = ffp;
+ 	     offs &lt;= __libc_stack_end - sizeof(void *);
+ 	     offs += sizeof(void *)) {
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000056.html">[Ugtrain-devel] [PATCH] libmemdisc: introduce calloc() hooking
+</A></li>
+	<LI>Next message: <A HREF="000058.html">[Ugtrain-devel] [PATCH] libmemhack: introduce calloc() hooking
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#57">[ date ]</a>
+              <a href="thread.html#57">[ thread ]</a>
+              <a href="subject.html#57">[ subject ]</a>
+              <a href="author.html#57">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

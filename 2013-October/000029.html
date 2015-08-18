@@ -1,0 +1,267 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] discovery: enhance stage 5 by sorting stack	offsets
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-October/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20discovery%3A%20enhance%20stage%205%20by%20sorting%20stack%0A%09offsets&In-Reply-To=%3C1381476514-4265-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000028.html">
+   <LINK REL="Next"  HREF="000030.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] discovery: enhance stage 5 by sorting stack	offsets</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20discovery%3A%20enhance%20stage%205%20by%20sorting%20stack%0A%09offsets&In-Reply-To=%3C1381476514-4265-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] discovery: enhance stage 5 by sorting stack	offsets">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Fri Oct 11 09:28:34 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000028.html">[Ugtrain-devel] [PATCH] discovery: discover dynmemign optionally in	stage 5
+</A></li>
+        <LI>Next message: <A HREF="000030.html">[Ugtrain-devel] [PATCH] ugtrain: improve the use of common data	types
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#29">[ date ]</a>
+              <a href="thread.html#29">[ thread ]</a>
+              <a href="subject.html#29">[ subject ]</a>
+              <a href="author.html#29">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>With sorted stack offsets it doesn't matter anymore in which order
+they have been triggered within the game. The order of the stack
+offsets remains often the same. So we have very good chances to
+hit successful discovery and adaption with that. But with more
+than one stack offset a risk remains. So we better ask the user
+if the automatic adaption really did the right thing per dynamic
+memory class.
+---
+ src/cfgentry.h    |    2 +
+ src/cfgparser.cpp |    1 +
+ src/discovery.cpp |  115 ++++++++++++++++++++++++++++++++++++++++++++++-------
+ 3 files changed, 103 insertions(+), 15 deletions(-)
+
+diff --git a/src/cfgentry.h b/src/cfgentry.h
+index b7635ec..0575adb 100644
+--- a/src/cfgentry.h
++++ b/src/cfgentry.h
+@@ -67,7 +67,9 @@ public:
+ 	void *adp_soffs[MAX_STACK];   /* adapted stack offsets */
+ 	bool soffs_ign[MAX_STACK];    /* stack offset for adaption only? */
+ 	u32 cfg_lines[MAX_STACK];     /* to write back new cfg */
++	u32 first_line;               /* dynmemstart line */
+ 	u8 adp_sidx;                  /* index in adapted stack offs */
++	bool discovered;
+ 	bool adp_failed;
+ };
+ 
+diff --git a/src/cfgparser.cpp b/src/cfgparser.cpp
+index e8a3e6e..4323503 100644
+--- a/src/cfgparser.cpp
++++ b/src/cfgparser.cpp
+@@ -409,6 +409,7 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 				parse_address(&amp;line, lnr, &amp;start);
+ 			dynmem_enp-&gt;v_maddr.clear();
+ 			dynmem_enp-&gt;cfg_lines[dynmem_enp-&gt;num_stack] = lnr;
++			dynmem_enp-&gt;first_line = lnr;
+ 			dynmem_enp-&gt;num_stack++;
+ 			break;
+ 
+diff --git a/src/discovery.cpp b/src/discovery.cpp
+index 80fe7e1..54160ca 100644
+--- a/src/discovery.cpp
++++ b/src/discovery.cpp
+@@ -40,19 +40,96 @@
+ #define DYNMEM_FILE &quot;/tmp/memhack_file&quot;
+ #define MAX_BT 11
+ 
+-// parameter for process_disc1234_malloc()
+-struct disc_pp {
+-	void *in_addr;
+-	struct app_options *opt;
+-};
+ 
++static void process_stage5_result (DynMemEntry *dynmem)
++{
++	u32 i;
++	char ch;
++
++	cout &lt;&lt; &quot;Class &quot; &lt;&lt; dynmem-&gt;name
++	     &lt;&lt; &quot;, old_code: &quot; &lt;&lt; hex &lt;&lt; dynmem-&gt;code_addr
++	     &lt;&lt; &quot;, new_code: &quot; &lt;&lt; dynmem-&gt;adp_addr &lt;&lt; dec &lt;&lt; endl;
++	for (i = 0; i &lt; dynmem-&gt;num_stack; i++) {
++		cout &lt;&lt; i &lt;&lt; &quot;: old_offs: &quot; &lt;&lt; hex &lt;&lt; dynmem-&gt;stack_offs[i]
++		     &lt;&lt; &quot;, new_offs: &quot; &lt;&lt; dynmem-&gt;adp_soffs[i] &lt;&lt; dec
++		     &lt;&lt; (dynmem-&gt;soffs_ign[i] ? &quot;, ignored&quot; : &quot;&quot;) &lt;&lt; endl;
++	}
++	cout &lt;&lt; &quot;Okay this way (y/n)? : &quot;;
++	fflush(stdout);
++	ch = 'n';
++	ch = do_getch();
++	cout &lt;&lt; ch &lt;&lt; endl;
++	if (ch != 'y') {
++		cerr &lt;&lt; &quot;Discovery failed!&quot; &lt;&lt; endl;
++		exit(-1);
++	}
++}
++
++static void swap_adp_soffs (DynMemEntry *dynmem, u32 idx1, u32 idx2)
++{
++	void *tmp_adp_soffs;
++
++	tmp_adp_soffs = dynmem-&gt;adp_soffs[idx1];
++	dynmem-&gt;adp_soffs[idx1] = dynmem-&gt;adp_soffs[idx2];
++	dynmem-&gt;adp_soffs[idx2] = tmp_adp_soffs;
++}
++
++static void swap_stack_offsets (DynMemEntry *dynmem, u32 idx1, u32 idx2)
++{
++	void *tmp_stack_offs;
++	bool tmp_soffs_ign;
++	u32 tmp_cfg_line;
++
++	tmp_stack_offs = dynmem-&gt;stack_offs[idx1];
++	tmp_soffs_ign = dynmem-&gt;soffs_ign[idx1];
++	tmp_cfg_line = dynmem-&gt;cfg_lines[idx1];
++	dynmem-&gt;stack_offs[idx1] = dynmem-&gt;stack_offs[idx2];
++	dynmem-&gt;soffs_ign[idx1] = dynmem-&gt;soffs_ign[idx2];
++	dynmem-&gt;cfg_lines[idx1] = dynmem-&gt;cfg_lines[idx2];
++	dynmem-&gt;stack_offs[idx2] = tmp_stack_offs;
++	dynmem-&gt;soffs_ign[idx2] = tmp_soffs_ign;
++	dynmem-&gt;cfg_lines[idx2] = tmp_cfg_line;
++}
++
++static void bubsort_stack_offs (void **arr, u32 size, DynMemEntry *dynmem,
++				void (*swap)(DynMemEntry *dynmem, u32, u32))
++{
++	u32 i, n, m;
++
++	n = size;
++	do {
++		for (i = 1, m = 0; i &lt; n; i++) {
++			if (arr[i] == NULL)
++				break;
++			if ((ulong) arr[i - 1] &gt; (ulong) arr[i]) {
++				swap(dynmem, i - 1, i);
++				m = i;
++			}
++		}
++		n = m;
++	} while (n &gt; 0);
++}
++
++/*
++ * Sort stack offsets so that adaption order becomes
++ * independent from the order in the config.
++ * We use simple bubble sort here.
++ */
++static void sort_stack_offsets (DynMemEntry *dynmem)
++{
++	bubsort_stack_offs(dynmem-&gt;stack_offs, MAX_STACK, dynmem,
++			   swap_stack_offsets);
++
++	bubsort_stack_offs(dynmem-&gt;adp_soffs, MAX_STACK, dynmem,
++			   swap_adp_soffs);
++}
+ 
+ static i32 postproc_stage5 (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 			    string *cfg_path, vector&lt;string&gt; *lines)
+ {
+ 	list&lt;CfgEntry&gt;::iterator cfg_it;
+ 	DynMemEntry *tmp = NULL;
+-	u8 discovered = 0;
++	bool discovered = false;
+ 	u32 lnr, i;
+ 	char ch;
+ 
+@@ -61,14 +138,22 @@ static i32 postproc_stage5 (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 			continue;
+ 		tmp = cfg_it-&gt;dynmem;
+ 
++		if (tmp-&gt;discovered) {
++			discovered = true;
++			continue;
++		}
+ 		if (tmp-&gt;adp_addr == opt-&gt;disc_addr &amp;&amp; !tmp-&gt;adp_failed &amp;&amp;
+ 		    tmp-&gt;adp_sidx &gt;= tmp-&gt;num_stack - tmp-&gt;num_sign) {
+-			discovered = 1;
++			sort_stack_offsets(tmp);
++			if (tmp-&gt;num_stack &gt; 1)
++				process_stage5_result(tmp);
++			tmp-&gt;discovered = true;
++			discovered = true;
+ 			continue;
+ 		}
+ 		if (!(tmp-&gt;adp_addr &amp;&amp; !tmp-&gt;adp_failed &amp;&amp;
+ 		      tmp-&gt;adp_sidx &gt;= tmp-&gt;num_stack - tmp-&gt;num_sign)) {
+-			cout &lt;&lt; &quot;Undiscovered objects found!&quot; &lt;&lt; endl;
++			cout &lt;&lt; &quot;Undiscovered class(es) found!&quot; &lt;&lt; endl;
+ 			if (discovered) {
+ 				cout &lt;&lt; &quot;Next discovery run (y/n)? : &quot;;
+ 				fflush(stdout);
+@@ -92,17 +177,11 @@ static i32 postproc_stage5 (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 		if (!cfg_it-&gt;dynmem || cfg_it-&gt;dynmem == tmp)
+ 			continue;
+ 		tmp = cfg_it-&gt;dynmem;
+-		cout &lt;&lt; &quot;Obj. &quot; &lt;&lt; tmp-&gt;name
+-		     &lt;&lt; &quot;, old_code: &quot; &lt;&lt; hex &lt;&lt; tmp-&gt;code_addr
+-		     &lt;&lt; &quot;, new_code: &quot; &lt;&lt; tmp-&gt;adp_addr &lt;&lt; dec &lt;&lt; endl;
+ 		tmp-&gt;code_addr = tmp-&gt;adp_addr;
+ 		for (i = 0; i &lt; tmp-&gt;adp_sidx; i++) {
+-			cout &lt;&lt; &quot;Obj. &quot; &lt;&lt; tmp-&gt;name
+-			     &lt;&lt; &quot;, old_offs: &quot; &lt;&lt; hex &lt;&lt; tmp-&gt;stack_offs[i]
+-			     &lt;&lt; &quot;, new_offs: &quot; &lt;&lt; tmp-&gt;adp_soffs[i] &lt;&lt; dec &lt;&lt; endl;
+ 			tmp-&gt;stack_offs[i] = tmp-&gt;adp_soffs[i];
+ 			lnr = tmp-&gt;cfg_lines[i];
+-			if (i == 0)
++			if (lnr == tmp-&gt;first_line)
+ 				lines-&gt;at(lnr) = &quot;dynmemstart &quot; + tmp-&gt;name + &quot; &quot;
+ 					+ to_string(tmp-&gt;mem_size) + &quot; &quot;
+ 					+ to_string(tmp-&gt;code_addr) + &quot; &quot;
+@@ -131,6 +210,12 @@ static i32 postproc_stage5 (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 	return DISC_OKAY;
+ }
+ 
++// parameter for process_disc1234_malloc()
++struct disc_pp {
++	void *in_addr;
++	struct app_options *opt;
++};
++
+ // mf() callback for read_dynmem_buf()
+ static void process_disc1234_malloc (list&lt;CfgEntry&gt; *cfg,
+ 				     struct post_parse *pp,
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000028.html">[Ugtrain-devel] [PATCH] discovery: discover dynmemign optionally in	stage 5
+</A></li>
+	<LI>Next message: <A HREF="000030.html">[Ugtrain-devel] [PATCH] ugtrain: improve the use of common data	types
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#29">[ date ]</a>
+              <a href="thread.html#29">[ thread ]</a>
+              <a href="subject.html#29">[ subject ]</a>
+              <a href="author.html#29">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

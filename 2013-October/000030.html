@@ -1,0 +1,548 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain: improve the use of common data	types
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-October/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20improve%20the%20use%20of%20common%20data%0A%09types&In-Reply-To=%3C1381576053-4232-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000029.html">
+   <LINK REL="Next"  HREF="000031.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain: improve the use of common data	types</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20improve%20the%20use%20of%20common%20data%0A%09types&In-Reply-To=%3C1381576053-4232-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain: improve the use of common data	types">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Sat Oct 12 13:07:33 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000029.html">[Ugtrain-devel] [PATCH] discovery: enhance stage 5 by sorting stack	offsets
+</A></li>
+        <LI>Next message: <A HREF="000031.html">[Ugtrain-devel] [PATCH] discovery: add GNU backtrace support
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#30">[ date ]</a>
+              <a href="thread.html#30">[ thread ]</a>
+              <a href="subject.html#30">[ subject ]</a>
+              <a href="author.html#30">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Also for C we use bools now with the 'stdbool.h' include. This makes
+bools much more obvious and unified.
+
+Also the type 'ptr_t' can be improved by just using 'unsigned long'
+for it. On 64-bit systems it has 8 bytes and on 32-bit systems it
+has 4 bytes.
+---
+ linuxhooking/libmemdisc.c | 12 ++++++------
+ linuxhooking/libmemhack.c |  4 ++--
+ src/cfgparser.cpp         |  5 +++--
+ src/common.h              |  9 +++------
+ src/discovery.cpp         | 14 +++++++-------
+ src/fifoparser.cpp        |  2 +-
+ src/fifoparser.h          |  2 +-
+ src/options.c             |  6 +++---
+ src/options.h             |  4 ++--
+ src/system.h              |  4 ++--
+ src/system_l.c            |  8 ++++----
+ src/system_w.c            |  4 ++--
+ src/ugtrain.cpp           | 16 ++++++++--------
+ tools/ugsimfind.c         | 20 +++++++++++---------
+ 14 files changed, 55 insertions(+), 55 deletions(-)
+
+diff --git a/linuxhooking/libmemdisc.c b/linuxhooking/libmemdisc.c
+index 657f0b4..a8197ee 100644
+--- a/linuxhooking/libmemdisc.c
++++ b/linuxhooking/libmemdisc.c
+@@ -58,7 +58,7 @@ static i32 ifd = -1;
+ static FILE *ofile = NULL;  /* much data - we need caching */
+ 
+ /* Output control */
+-static u8 active = 0;
++static bool active = false;
+ static i32 stage = 0;  /* 0: no output */
+ 
+ /* Input parameters */
+@@ -104,7 +104,7 @@ void __attribute ((constructor)) memdisc_init (void)
+ 	fprintf(stdout, PFX &quot;Stack end:  %p\n&quot;, __libc_stack_end);
+ 	/*
+ 	 * Don't you dare call malloc for another purpose in this lib!
+-	 * We can only do this safely as (active == 0).
++	 * We can only do this safely as (active == false).
+ 	 */
+ 	heap_start = malloc(1);
+ 	if (heap_start) {
+@@ -153,7 +153,7 @@ void __attribute ((constructor)) memdisc_init (void)
+ 			heap_saddr = PTR_ADD(void *, heap_saddr, heap_soffs);
+ 			heap_eaddr = PTR_ADD(void *, heap_eaddr, heap_eoffs);
+ 			stage = 1;
+-			active = 1;
++			active = true;
+ 		} else {
+ 			goto parse_err;
+ 		}
+@@ -172,7 +172,7 @@ void __attribute ((constructor)) memdisc_init (void)
+ 			heap_saddr = PTR_ADD(void *, heap_saddr, heap_soffs);
+ 			heap_eaddr = PTR_ADD(void *, heap_eaddr, heap_eoffs);
+ 			stage = 2;
+-			active = 1;
++			active = true;
+ 		} else {
+ 			goto parse_err;
+ 		}
+@@ -191,7 +191,7 @@ void __attribute ((constructor)) memdisc_init (void)
+ 			heap_saddr = PTR_ADD(void *, heap_saddr, heap_soffs);
+ 			heap_eaddr = PTR_ADD(void *, heap_eaddr, heap_eoffs);
+ 			stage = 3;
+-			active = 1;
++			active = true;
+ 		} else {
+ 			goto parse_err;
+ 		}
+@@ -204,7 +204,7 @@ void __attribute ((constructor)) memdisc_init (void)
+ 			heap_saddr = PTR_ADD(void *, heap_saddr, heap_soffs);
+ 			heap_eaddr = PTR_ADD(void *, heap_eaddr, heap_eoffs);
+ 			stage = 4;
+-			active = 1;
++			active = true;
+ 		} else {
+ 			goto parse_err;
+ 		}
+diff --git a/linuxhooking/libmemhack.c b/linuxhooking/libmemhack.c
+index ed92573..03a36bb 100644
+--- a/linuxhooking/libmemhack.c
++++ b/linuxhooking/libmemhack.c
+@@ -77,7 +77,7 @@ static i32 ofd = -1, ifd = -1;
+ static char obuf[BUF_SIZE];
+ 
+ /* Output control */
+-static u8 active = 0;
++static bool active = false;
+ 
+ /* Stack check */
+ /*
+@@ -219,7 +219,7 @@ void __attribute ((constructor)) memhack_init (void)
+ 	}
+ 
+ 	if (num_cfg &gt; 0)
+-		active = 1;
++		active = true;
+ 	return;
+ 
+ read_err:
+diff --git a/src/cfgparser.cpp b/src/cfgparser.cpp
+index 4323503..35cb737 100644
+--- a/src/cfgparser.cpp
++++ b/src/cfgparser.cpp
+@@ -460,8 +460,9 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			if (in_dynmem)
+ 				cfg_parse_err(&amp;line, lnr, start);
+ 
+-			opt-&gt;adp_required = parse_value(&amp;line, lnr, &amp;start,
+-							false, false, NULL, NULL);
++			if (parse_value(&amp;line, lnr, &amp;start,
++					false, false, NULL, NULL))
++				opt-&gt;adp_required = true;
+ 			opt-&gt;adp_req_line = lnr;
+ 			break;
+ 
+diff --git a/src/common.h b/src/common.h
+index a91a3c2..d5c322d 100644
+--- a/src/common.h
++++ b/src/common.h
+@@ -22,6 +22,8 @@
+ 	#include &lt;iostream&gt;
+ 	#include &lt;string&gt;
+ 	using namespace std;
++#else
++	#include &lt;stdbool.h&gt;
+ #endif
+ 
+ // Common types
+@@ -37,12 +39,7 @@ typedef unsigned long ulong;
+ #ifndef __linux__
+ 	typedef int pid_t;
+ #endif
+-
+-#ifdef __i386__
+-	typedef u32 ptr_t;
+-#else
+-	typedef u64 ptr_t;
+-#endif
++typedef ulong ptr_t;
+ 
+ // Common defines
+ #define MAX_STACK 8
+diff --git a/src/discovery.cpp b/src/discovery.cpp
+index 54160ca..9266f1e 100644
+--- a/src/discovery.cpp
++++ b/src/discovery.cpp
+@@ -101,7 +101,7 @@ static void bubsort_stack_offs (void **arr, u32 size, DynMemEntry *dynmem,
+ 		for (i = 1, m = 0; i &lt; n; i++) {
+ 			if (arr[i] == NULL)
+ 				break;
+-			if ((ulong) arr[i - 1] &gt; (ulong) arr[i]) {
++			if ((ptr_t) arr[i - 1] &gt; (ptr_t) arr[i]) {
+ 				swap(dynmem, i - 1, i);
+ 				m = i;
+ 			}
+@@ -204,7 +204,7 @@ static i32 postproc_stage5 (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 	write_config_vect(cfg_path, lines);
+ 
+ 	// Run game with libmemhack
+-	opt-&gt;do_adapt = 0;
++	opt-&gt;do_adapt = false;
+ 	opt-&gt;disc_str = NULL;
+ 	use_libmemhack(opt);
+ 	return DISC_OKAY;
+@@ -231,7 +231,7 @@ static void process_disc1234_malloc (list&lt;CfgEntry&gt; *cfg,
+ 	void *soffs[MAX_BT] = { NULL };
+ 	char *sep_pos;
+ 	int i, ret, num_codes = 0, num_soffs = 0;
+-	u8 is_stage4 = 0;
++	bool is_stage4 = false;
+ 	string cmd_str, tmp_str;
+ 	char pbuf[PIPE_BUF] = { 0 };
+ 	ssize_t rbytes = 0;
+@@ -258,7 +258,7 @@ static void process_disc1234_malloc (list&lt;CfgEntry&gt; *cfg,
+ 			ret = sscanf(pp-&gt;ibuf + pp-&gt;ppos, &quot;c%p;o%p&quot;,
+ 				     &amp;codes[i], &amp;soffs[i]);
+ 			if (ret == 2) {
+-				is_stage4 = 1;
++				is_stage4 = true;
+ 				num_codes++;
+ 				num_soffs++;
+ 			} else if (ret == 1) {
+@@ -283,7 +283,7 @@ static void process_disc1234_malloc (list&lt;CfgEntry&gt; *cfg,
+ 				   &quot;| grep -o -e \&quot;&lt;.*@plt&gt;\&quot;&quot;;
+ 			//cout &lt;&lt; &quot;$ &quot; &lt;&lt; cmd_str &lt;&lt; endl;
+ 			rbytes = run_cmd_pipe(cmd_str.c_str(), NULL, pbuf,
+-					      sizeof(pbuf), 1);
++					      sizeof(pbuf), true);
+ 			if (rbytes &gt; 0) {
+ 				// remove trailing new line
+ 				if (pbuf[rbytes - 1] == '\n')
+@@ -342,7 +342,7 @@ static i32 postproc_stage1234 (struct app_options *opt, list&lt;CfgEntry&gt; *cfg)
+ 	dpp.opt = opt;
+ 
+ 	while (1) {
+-		if (read_dynmem_buf(cfg, &amp;dpp, ifd, pmask, 1,
++		if (read_dynmem_buf(cfg, &amp;dpp, ifd, pmask, true,
+ 		    process_disc1234_malloc, process_disc1_free))
+ 			break;
+ 	}
+@@ -503,7 +503,7 @@ i32 prepare_discovery (struct app_options *opt, list&lt;CfgEntry&gt; *cfg)
+ 				   &quot;| tr -d [:upper:] | tr -d [:blank:]&quot;;
+ 			cout &lt;&lt; &quot;$ &quot; &lt;&lt; cmd_str &lt;&lt; endl;
+ 			if (run_cmd_pipe(cmd_str.c_str(), NULL, pbuf,
+-			    sizeof(pbuf), 1) &lt;= 0)
++			    sizeof(pbuf), true) &lt;= 0)
+ 				goto err;
+ 			if (sscanf(pbuf, &quot;%p\n%p&quot;, &amp;bt_saddr, &amp;bt_eaddr) != 2) {
+ 				goto err;
+diff --git a/src/fifoparser.cpp b/src/fifoparser.cpp
+index 460b691..52b0c8d 100644
+--- a/src/fifoparser.cpp
++++ b/src/fifoparser.cpp
+@@ -24,7 +24,7 @@
+ #define REVERSE_EOF -3  // reverse file read end
+ 
+ 
+-i32 read_dynmem_buf (list&lt;CfgEntry&gt; *cfg, void *argp, i32 ifd, int pmask, u8 reverse,
++i32 read_dynmem_buf (list&lt;CfgEntry&gt; *cfg, void *argp, i32 ifd, int pmask, bool reverse,
+ 		     void (*mf)(list&lt;CfgEntry&gt; *, struct post_parse *, void *,
+ 				void *, size_t, void *, void *),
+ 		     void (*ff)(list&lt;CfgEntry&gt; *, void *, void *))
+diff --git a/src/fifoparser.h b/src/fifoparser.h
+index 9c2733c..d9431da 100644
+--- a/src/fifoparser.h
++++ b/src/fifoparser.h
+@@ -32,7 +32,7 @@ struct post_parse {
+ 	void	*argp;
+ };
+ 
+-i32 read_dynmem_buf (list&lt;CfgEntry&gt; *cfg, void *argp, i32 ifd, int pmask, u8 reverse,
++i32 read_dynmem_buf (list&lt;CfgEntry&gt; *cfg, void *argp, i32 ifd, int pmask, bool reverse,
+ 		     void (*mf)(list&lt;CfgEntry&gt; *, struct post_parse *, void *,
+ 				void *, size_t, void *, void *),
+ 		     void (*ff)(list&lt;CfgEntry&gt; *, void *, void *));
+diff --git a/src/options.c b/src/options.c
+index cd38366..c5de05a 100644
+--- a/src/options.c
++++ b/src/options.c
+@@ -91,7 +91,7 @@ void do_assumptions (struct app_options *opt)
+ 
+ static void init_options (struct app_options *opt)
+ {
+-	opt-&gt;do_adapt = 0;
++	opt-&gt;do_adapt = false;
+ 	opt-&gt;preload_lib = NULL;
+ 	opt-&gt;disc_str = NULL;
+ 	/* no direct CLI input */
+@@ -99,7 +99,7 @@ static void init_options (struct app_options *opt)
+ 	opt-&gt;proc_name = NULL;
+ 	opt-&gt;game_path = NULL;
+ 	opt-&gt;adp_script = NULL;
+-	opt-&gt;adp_required = 0;
++	opt-&gt;adp_required = false;
+ 	opt-&gt;adp_req_line = 0;
+ 	opt-&gt;disc_addr = NULL;
+ }
+@@ -122,7 +122,7 @@ void parse_options (i32 argc, char **argv, struct app_options *opt)
+ 			usage();
+ 			break;
+ 		case 'A':
+-			opt-&gt;do_adapt = 1;
++			opt-&gt;do_adapt = true;
+ 			break;
+ 		case 'D':
+ 			if (optind == argc)
+diff --git a/src/options.h b/src/options.h
+index 8e4fe96..b39f3cd 100644
+--- a/src/options.h
++++ b/src/options.h
+@@ -24,11 +24,11 @@
+ #define PRELOADER  &quot;ugpreload&quot;
+ 
+ struct app_options {
+-	u8	do_adapt;
++	bool	do_adapt;
+ 	char	*preload_lib;
+ 	char	*disc_str;
+ 	/* no direct CLI input */
+-	u8	adp_required;
++	bool	adp_required;
+ 	u32	adp_req_line;
+ 	char	*adp_script;
+ 	char	*home;
+diff --git a/src/system.h b/src/system.h
+index 7e329e4..2c4725d 100644
+--- a/src/system.h
++++ b/src/system.h
+@@ -42,9 +42,9 @@ extern &quot;C&quot; {
+ 	char    *get_abs_app_path (char *app_name);
+ 	pid_t   proc_to_pid (char *proc_name);
+ 	i32     run_cmd_bg (const char *cmd, char *const cmdv[],
+-			    u8 do_wait);
++			    bool do_wait);
+ 	ssize_t run_cmd_pipe (const char *cmd, char *const cmdv[],
+-			      char *pbuf, size_t pbuf_size, u8 use_shell);
++			      char *pbuf, size_t pbuf_size, bool use_shell);
+ 	i32     fork_wait_kill (pid_t wpid, void (*task) (void *), void *argp);
+ #ifdef __cplusplus
+ };
+diff --git a/src/system_l.c b/src/system_l.c
+index 4292501..c0d700c 100644
+--- a/src/system_l.c
++++ b/src/system_l.c
+@@ -74,7 +74,7 @@ err:
+  * Parameters: execvp params, wait for the process 0/1
+  * Returns: 0 for success, -1 for failure
+  */
+-i32 run_cmd_bg (const char *cmd, char *const cmdv[], u8 do_wait)
++i32 run_cmd_bg (const char *cmd, char *const cmdv[], bool do_wait)
+ {
+ 	pid_t pid;
+ 	i32 status;
+@@ -110,7 +110,7 @@ child_err:
+  *              used with cmd and cmdv[] is ignored.
+  */
+ ssize_t run_cmd_pipe (const char *cmd, char *const cmdv[], char *pbuf,
+-		      size_t pbuf_size, u8 use_shell)
++		      size_t pbuf_size, bool use_shell)
+ {
+ 	pid_t pid;
+ 	i32 status, fds[2];
+@@ -186,7 +186,7 @@ pid_t proc_to_pid (char *proc_name)
+ 	cmdv[2] = proc_name;
+ 	cmdv[3] = NULL;
+ 
+-	if (run_cmd_pipe(cmd, cmdv, pbuf, sizeof(pbuf), 0) &lt;= 0)
++	if (run_cmd_pipe(cmd, cmdv, pbuf, sizeof(pbuf), false) &lt;= 0)
+ 		goto err;
+ 
+ 	if (!isdigit(pbuf[0]))
+@@ -220,7 +220,7 @@ char *get_abs_app_path (char *app_name)
+ 	cmdv[1] = app_name;
+ 	cmdv[2] = NULL;
+ 
+-	rbytes = run_cmd_pipe(cmd, cmdv, pbuf, sizeof(pbuf), 0);
++	rbytes = run_cmd_pipe(cmd, cmdv, pbuf, sizeof(pbuf), false);
+ 	if (rbytes &lt;= 0)
+ 		goto err;
+ 
+diff --git a/src/system_w.c b/src/system_w.c
+index 648e475..99c93b3 100644
+--- a/src/system_w.c
++++ b/src/system_w.c
+@@ -46,7 +46,7 @@ i32 fork_wait_kill (pid_t wpid, void (*task) (void *), void *argp)
+  * Parameters: execvp params, wait for the process 0/1
+  * Returns: 0 for success, -1 for failure
+  */
+-i32 run_cmd_bg (const char *cmd, char *const cmdv[], u8 do_wait)
++i32 run_cmd_bg (const char *cmd, char *const cmdv[], bool do_wait)
+ {
+ 	return -1;
+ }
+@@ -63,7 +63,7 @@ i32 run_cmd_bg (const char *cmd, char *const cmdv[], u8 do_wait)
+  *              used with cmd and cmdv[] is ignored.
+  */
+ ssize_t run_cmd_pipe (const char *cmd, char *const cmdv[], char *pbuf,
+-		      size_t pbuf_size, u8 use_shell)
++		      size_t pbuf_size, bool use_shell)
+ {
+ 	return -1;
+ }
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index 5781a71..0dbccdb 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -476,7 +476,7 @@ static i32 run_game (char *game_path)
+ 
+ 	cout &lt;&lt; &quot;$ &quot; &lt;&lt; cmdv[0] &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
+ 
+-	ret = run_cmd_bg(cmd, cmdv, 0);
++	ret = run_cmd_bg(cmd, cmdv, false);
+ 	if (ret)
+ 		goto err;
+ 
+@@ -501,7 +501,7 @@ static i32 run_preloader (char *preload_lib, char *game_path)
+ 	cout &lt;&lt; &quot;$ &quot; &lt;&lt; cmdv[0] &lt;&lt; &quot; &quot; &lt;&lt; cmdv[1]
+ 	     &lt;&lt; &quot; &quot; &lt;&lt; cmdv[2] &lt;&lt; &quot; &amp;&quot; &lt;&lt; endl;
+ 
+-	ret = run_cmd_bg(cmd, cmdv, 0);
++	ret = run_cmd_bg(cmd, cmdv, false);
+ 	if (ret)
+ 		goto err;
+ 
+@@ -710,7 +710,7 @@ static i32 adapt_config (list&lt;CfgEntry&gt; *cfg, char *adp_script,
+ 		goto err;
+ #endif
+ 
+-	read_bytes = run_cmd_pipe(cmd, cmdv, pbuf, sizeof(pbuf), 0);
++	read_bytes = run_cmd_pipe(cmd, cmdv, pbuf, sizeof(pbuf), false);
+ 	if (read_bytes &lt;= 0)
+ 		goto err;
+ 	cout &lt;&lt; &quot;Adaption return:&quot; &lt;&lt; endl;
+@@ -822,7 +822,7 @@ i32 main (i32 argc, char **argv, char **env)
+ 	char ch;
+ 	i32 ifd = -1, ofd = -1;
+ 	struct app_options opt;
+-	u8 emptycfg = 0;
++	bool emptycfg = false;
+ 	u32 mem_idx, ov_idx, num_kicked;
+ 	bool is_dynmem;
+ 
+@@ -857,7 +857,7 @@ i32 main (i32 argc, char **argv, char **env)
+ 
+ 	if (opt.disc_str &amp;&amp;
+ 	    (opt.disc_str[0] &gt;= '0' &amp;&amp; opt.disc_str[0] &lt;= '4'))
+-		emptycfg = 1;
++		emptycfg = true;
+ 
+ 	if (!opt.game_path)
+ 		opt.game_path = get_abs_app_path(opt.proc_name);
+@@ -889,7 +889,7 @@ i32 main (i32 argc, char **argv, char **env)
+ 		ch = do_getch();
+ 		cout &lt;&lt; ch &lt;&lt; endl;
+ 		if (ch == 'y') {
+-			opt.do_adapt = 1;
++			opt.do_adapt = true;
+ 			do_assumptions(&amp;opt);
+ 		}
+ 	}
+@@ -979,8 +979,8 @@ prepare_dynmem:
+ 		}
+ 
+ 		// get allocated and freed objects (TIME CRITICAL!)
+-		read_dynmem_buf(&amp;cfg, NULL, ifd, pmask, 0, set_dynmem_addr,
+-				unset_dynmem_addr);
++		read_dynmem_buf(&amp;cfg, NULL, ifd, pmask, false,
++				set_dynmem_addr, unset_dynmem_addr);
+ 
+ 		// print allocated and freed object counts
+ 		old_dynmem = NULL;
+diff --git a/tools/ugsimfind.c b/tools/ugsimfind.c
+index 84456c5..defb463 100644
+--- a/tools/ugsimfind.c
++++ b/tools/ugsimfind.c
+@@ -20,6 +20,7 @@
+ #include &lt;fcntl.h&gt;
+ #include &lt;ctype.h&gt;
+ #include &lt;string.h&gt;
++#include &quot;../src/common.h&quot;
+ 
+ /* always match these */
+ #define MAX_FILES	 100
+@@ -39,14 +40,15 @@ APP_NAME &quot; - find similarities in mem. obj. dump files\n&quot;
+ ;
+ 
+ 
+-int main (int argc, char **argv)
++i32 main (i32 argc, char **argv)
+ {
+-	int fds[MAX_FILES];
+-	int i, j, k, l;
+-	unsigned char ch, found;
+-	unsigned char values[MAX_FILES];
+-	unsigned char counts[MAX_FILES];
+-	unsigned char files[MAX_FILES][MAX_FILES]; /* argv idx for file name */
++	i32 fds[MAX_FILES];
++	i32 i, j, k, l;
++	u8 ch;
++	bool found;
++	u8 values[MAX_FILES];
++	u8 counts[MAX_FILES];
++	u8 files[MAX_FILES][MAX_FILES]; /* argv idx for file name */
+ 	ssize_t rbytes;
+ 	size_t fidx = 0, diffs = 0;
+ 
+@@ -75,11 +77,11 @@ int main (int argc, char **argv)
+ 			rbytes = read(fds[j], &amp;ch, sizeof(ch));
+ 			if (rbytes &lt; sizeof(ch))
+ 				return -1;
+-			found = 0;
++			found = false;
+ 			for (k = 0; k &lt; diffs; k++) {
+ 				if (ch == values[k]) {
+ 					counts[k]++;
+-					found = 1;
++					found = true;
+ 					for (l = 0; l &lt; MAX_FILES; l++) {
+ 						if (files[k][l] == 0) {
+ 							files[k][l] = i;
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000029.html">[Ugtrain-devel] [PATCH] discovery: enhance stage 5 by sorting stack	offsets
+</A></li>
+	<LI>Next message: <A HREF="000031.html">[Ugtrain-devel] [PATCH] discovery: add GNU backtrace support
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#30">[ date ]</a>
+              <a href="thread.html#30">[ thread ]</a>
+              <a href="subject.html#30">[ subject ]</a>
+              <a href="author.html#30">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

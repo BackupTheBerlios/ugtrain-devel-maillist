@@ -1,0 +1,245 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain: fix and enhance config output
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2014-January/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20fix%20and%20enhance%20config%20output&In-Reply-To=%3C1390595393-3290-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000094.html">
+   <LINK REL="Next"  HREF="000096.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain: fix and enhance config output</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20fix%20and%20enhance%20config%20output&In-Reply-To=%3C1390595393-3290-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain: fix and enhance config output">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Fri Jan 24 21:29:53 CET 2014</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000094.html">[Ugtrain-devel] [PATCH] examples: warzone2100: update ptrmem sizes
+</A></li>
+        <LI>Next message: <A HREF="000096.html">[Ugtrain-devel] [PATCH] ugtrain: move the config output to new files
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#95">[ date ]</a>
+              <a href="thread.html#95">[ thread ]</a>
+              <a href="subject.html#95">[ subject ]</a>
+              <a href="author.html#95">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>It would be good to see dynamic wish values, pointers to pointer
+memory and pointer memory config entries correctly. So unify the
+output code and enhance it.
+
+When printing 0x0 as (void *), then 0 is printed. So cast it to
+(long) and prefix it with &quot;0x&quot; to show that this is an offset or
+an address.
+---
+ src/ugtrain.cpp |   95 +++++++++++++++++++++++++++++++++++++++++--------------
+ 1 file changed, 71 insertions(+), 24 deletions(-)
+
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index 0ec9968..e8ea2f5 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -50,10 +50,65 @@
+ #define DYNMEM_OUT &quot;/tmp/memhack_in&quot;
+ 
+ 
+-void output_configp (list&lt;CfgEntry*&gt; *cfg)
++static void output_config_val (CfgEntry *cfg_en)
++{
++	switch (cfg_en-&gt;dynval) {
++	case DYN_VAL_WATCH:
++		cout &lt;&lt; &quot;(watch)&quot; &lt;&lt; endl;
++		break;
++	case DYN_VAL_MIN:
++		cout &lt;&lt; cfg_en-&gt;value &lt;&lt; &quot; (min)&quot; &lt;&lt; endl;
++		break;
++	case DYN_VAL_MAX:
++		cout &lt;&lt; cfg_en-&gt;value &lt;&lt; &quot; (max)&quot; &lt;&lt; endl;
++		break;
++	case DYN_VAL_ADDR:
++		if (cfg_en-&gt;cfg_ref)
++			cout &lt;&lt; cfg_en-&gt;cfg_ref-&gt;name &lt;&lt; endl;
++		else
++			cout &lt;&lt; &quot;0x&quot; &lt;&lt; hex &lt;&lt; cfg_en-&gt;value
++				&lt;&lt; &quot; (from addr)&quot; &lt;&lt; dec &lt;&lt; endl;
++		break;
++	default:
++		cout &lt;&lt; cfg_en-&gt;value &lt;&lt; endl;
++		break;
++	}
++}
++
++static void output_config_en (CfgEntry *cfg_en)
+ {
+ 	double tmp_dval;
+ 
++	if (cfg_en-&gt;ptrtgt) {
++		cout &lt;&lt; &quot;  &quot; &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot; 0x&quot; &lt;&lt; hex &lt;&lt; (long) cfg_en-&gt;addr &lt;&lt; dec
++			&lt;&lt; &quot; &quot; &lt;&lt; 8 * sizeof(void *) &lt;&lt; &quot;-bit -&gt; &quot;
++			&lt;&lt; cfg_en-&gt;ptrtgt-&gt;name &lt;&lt; endl;
++	} else {
++		cout &lt;&lt; &quot;  &quot; &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot; 0x&quot; &lt;&lt; hex &lt;&lt; (long) cfg_en-&gt;addr &lt;&lt; dec
++			&lt;&lt; &quot; &quot; &lt;&lt; cfg_en-&gt;size &lt;&lt; &quot;-bit &quot;;
++		if (cfg_en-&gt;is_float) {
++			memcpy(&amp;tmp_dval, &amp;cfg_en-&gt;value, sizeof(i64));
++			cout &lt;&lt; tmp_dval &lt;&lt; endl;
++		} else {
++			output_config_val(cfg_en);
++		}
++	}
++}
++
++static void output_ptrmem (CfgEntry *cfg_en)
++{
++	list&lt;CfgEntry*&gt; *cfg_act = &amp;cfg_en-&gt;ptrtgt-&gt;cfg_act;
++	list&lt;CfgEntry*&gt;::iterator it;
++
++	for (it = cfg_act-&gt;begin(); it != cfg_act-&gt;end(); it++) {
++		cfg_en = *it;
++		cout &lt;&lt; &quot;  -&gt;&quot;;
++		output_config_en(cfg_en);
++	}
++}
++
++void output_configp (list&lt;CfgEntry*&gt; *cfg)
++{
+ 	if (!cfg || cfg-&gt;empty()) {
+ 		cout &lt;&lt; &quot;&lt;none&gt;&quot; &lt;&lt; endl;
+ 		return;
+@@ -64,14 +119,9 @@ void output_configp (list&lt;CfgEntry*&gt; *cfg)
+ 	list&lt;CfgEntry*&gt;::iterator it;
+ 	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
+ 		cfg_en = *it;
+-		cout &lt;&lt; &quot;  &quot;  &lt;&lt; cfg_en-&gt;name &lt;&lt; &quot; &quot; &lt;&lt; hex &lt;&lt; cfg_en-&gt;addr
+-		     &lt;&lt; dec &lt;&lt; &quot; &quot; &lt;&lt; cfg_en-&gt;size &lt;&lt; &quot;-bit &quot;;
+-		if (cfg_en-&gt;is_float) {
+-			memcpy(&amp;tmp_dval, &amp;cfg_en-&gt;value, sizeof(i64));
+-			cout &lt;&lt; tmp_dval &lt;&lt; endl;
+-		} else {
+-			cout &lt;&lt; cfg_en-&gt;value &lt;&lt; endl;
+-		}
++		output_config_en(cfg_en);
++		if (cfg_en-&gt;ptrtgt)
++			output_ptrmem (cfg_en);
+ 	}
+ }
+ 
+@@ -110,13 +160,13 @@ static void output_checks (CfgEntry *cfg_en)
+ 	char *check_op = get_check_op(cfg_en-&gt;check);
+ 
+ 	if (check_op) {
+-		cout &lt;&lt; &quot;    check &quot; &lt;&lt; hex &lt;&lt; cfg_en-&gt;addr &lt;&lt; dec &lt;&lt; check_op;
++		cout &lt;&lt; &quot;    check 0x&quot; &lt;&lt; hex &lt;&lt; (long) cfg_en-&gt;addr &lt;&lt; dec &lt;&lt; check_op;
+ 
+ 		if (cfg_en-&gt;is_float) {
+ 			memcpy(&amp;tmp_dval, &amp;cfg_en-&gt;value, sizeof(i64));
+ 			cout &lt;&lt; tmp_dval &lt;&lt; endl;
+ 		} else {
+-			cout &lt;&lt; cfg_en-&gt;value &lt;&lt; endl;
++			output_config_val(cfg_en);
+ 		}
+ 	}
+ 	if (!chk_lp)
+@@ -126,7 +176,7 @@ static void output_checks (CfgEntry *cfg_en)
+ 		if (it-&gt;cfg_ref)
+ 			cout &lt;&lt; &quot;    check &quot; &lt;&lt; it-&gt;cfg_ref-&gt;name;
+ 		else
+-			cout &lt;&lt; &quot;    check &quot; &lt;&lt; hex &lt;&lt; it-&gt;addr &lt;&lt; dec;
++			cout &lt;&lt; &quot;    check 0x&quot; &lt;&lt; hex &lt;&lt; (long) it-&gt;addr &lt;&lt; dec;
+ 		for (i = 0; it-&gt;check[i] != CHECK_END; i++) {
+ 			if (i &gt; 0)
+ 				cout &lt;&lt; &quot; ||&quot;;
+@@ -146,8 +196,6 @@ static void output_checks (CfgEntry *cfg_en)
+ 
+ static void output_config (list&lt;CfgEntry&gt; *cfg)
+ {
+-	double tmp_dval;
+-
+ 	if (!cfg || cfg-&gt;empty()) {
+ 		cout &lt;&lt; &quot;&lt;none&gt;&quot; &lt;&lt; endl;
+ 		return;
+@@ -158,21 +206,20 @@ static void output_config (list&lt;CfgEntry&gt; *cfg)
+ 	list&lt;CfgEntry&gt;::iterator it;
+ 	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
+ 		cfg_en = *it;
++		// headline
+ 		if (cfg_en.dynmem)
+ 			cout &lt;&lt; &quot;dynmem: &quot; &lt;&lt; cfg_en.dynmem-&gt;name &lt;&lt; &quot; &quot;
+ 				&lt;&lt; cfg_en.dynmem-&gt;mem_size &lt;&lt; &quot; &quot;
+ 				&lt;&lt; hex &lt;&lt; cfg_en.dynmem-&gt;code_addr &lt;&lt; &quot; &quot;
+ 				&lt;&lt; cfg_en.dynmem-&gt;stack_offs &lt;&lt; dec &lt;&lt; endl;
++		else if (cfg_en.ptrmem)
++			cout &lt;&lt; &quot;ptrmem: &quot; &lt;&lt; cfg_en.ptrmem-&gt;name &lt;&lt; &quot; &quot;
++				&lt;&lt;  cfg_en.ptrmem-&gt;mem_size &lt;&lt; endl;
+ 		else
+ 			cout &lt;&lt; &quot;static: &quot; &lt;&lt; endl;
+-		cout &lt;&lt; &quot;  &quot; &lt;&lt; cfg_en.name &lt;&lt; &quot; &quot; &lt;&lt; hex &lt;&lt; cfg_en.addr &lt;&lt; dec;
+-		cout &lt;&lt; &quot; &quot; &lt;&lt; cfg_en.size &lt;&lt; &quot;-bit &quot;;
+-		if (cfg_en.is_float) {
+-			memcpy(&amp;tmp_dval, &amp;cfg_en.value, sizeof(i64));
+-			cout &lt;&lt; tmp_dval &lt;&lt; endl;
+-		} else {
+-			cout &lt;&lt; cfg_en.value &lt;&lt; endl;
+-		}
++
++		// value line
++		output_config_en(&amp;cfg_en);
+ 		output_checks(&amp;cfg_en);
+ 	}
+ }
+@@ -615,7 +662,7 @@ static void change_memory (pid_t pid, CfgEntry *cfg_en, u8 *buf,
+ 	}
+ }
+ 
+-static void output_ptrmem (CfgEntry *cfg_en)
++static void output_ptrmem_values (CfgEntry *cfg_en)
+ {
+ 	DynMemEntry *dynmem = cfg_en-&gt;ptrtgt-&gt;dynmem;
+ 	void *mem_offs;
+@@ -1593,7 +1640,7 @@ prepare_dynmem:
+ 			}
+ 			output_mem_val(cfg_en, mem_offs, is_dynmem);
+ 			if (cfg_en-&gt;ptrtgt)
+-				output_ptrmem(cfg_en);
++				output_ptrmem_values(cfg_en);
+ 		}
+ 
+ 	}
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000094.html">[Ugtrain-devel] [PATCH] examples: warzone2100: update ptrmem sizes
+</A></li>
+	<LI>Next message: <A HREF="000096.html">[Ugtrain-devel] [PATCH] ugtrain: move the config output to new files
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#95">[ date ]</a>
+              <a href="thread.html#95">[ thread ]</a>
+              <a href="subject.html#95">[ subject ]</a>
+              <a href="author.html#95">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,395 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] linuxhooking: unify use of 'common.h',	increase config space
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-September/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20linuxhooking%3A%20unify%20use%20of%20%27common.h%27%2C%0A%09increase%20config%20space&In-Reply-To=%3C1378365729-6338-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000010.html">
+   <LINK REL="Next"  HREF="000012.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] linuxhooking: unify use of 'common.h',	increase config space</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20linuxhooking%3A%20unify%20use%20of%20%27common.h%27%2C%0A%09increase%20config%20space&In-Reply-To=%3C1378365729-6338-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] linuxhooking: unify use of 'common.h',	increase config space">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Thu Sep  5 09:22:09 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000010.html">[Ugtrain-devel] [PATCH] ugtrain: introduce 'dynmemign' config	command
+</A></li>
+        <LI>Next message: <A HREF="000012.html">[Ugtrain-devel] [PATCH] libmemhack: fix and enhance config buffer	handling
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#11">[ date ]</a>
+              <a href="thread.html#11">[ thread ]</a>
+              <a href="subject.html#11">[ subject ]</a>
+              <a href="author.html#11">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>We use all the helpers and types from common.h, now. This helps
+avoiding coding stuff twice. Forthermore, we increase the max.
+number of stack offsets from 4 to 8 and we use 4 memory pages
+instead of only one for the config in libmemhack. This is
+important due to the fact that the game can become unstable
+if we don't keep track of enough memory addresses.
+---
+ linuxhooking/libmemdisc.c | 40 ++++++++++++++++------------------------
+ linuxhooking/libmemhack.c | 36 ++++++++++++++++--------------------
+ linuxhooking/ugpreload.c  |  8 +++-----
+ src/cfgentry.h            |  2 --
+ src/common.h              | 24 ++++++++++++++----------
+ 5 files changed, 49 insertions(+), 61 deletions(-)
+
+diff --git a/linuxhooking/libmemdisc.c b/linuxhooking/libmemdisc.c
+index bca874c..0fc4217 100644
+--- a/linuxhooking/libmemdisc.c
++++ b/linuxhooking/libmemdisc.c
+@@ -25,6 +25,7 @@
+ #include &lt;signal.h&gt;     /* sigignore */
+ #include &lt;unistd.h&gt;     /* read */
+ #include &lt;limits.h&gt;     /* PIPE_BUF */
++#include &quot;../src/common.h&quot;
+ 
+ #define PFX &quot;[memdisc] &quot;
+ #define OW_MALLOC 1
+@@ -39,30 +40,21 @@
+ 	#define printf(...) do { } while (0);
+ #endif
+ 
+-typedef unsigned long long u64;
+-typedef unsigned int u32;
+-
+ /* get the stack pointer (x86 only) */
+ #ifdef __i386__
+-register void *reg_sp __asm__ (&quot;esp&quot;);
+-typedef u32 ptr_t;
++	register void *reg_sp __asm__ (&quot;esp&quot;);
+ #else
+-register void *reg_sp __asm__ (&quot;rsp&quot;);
+-typedef u64 ptr_t;
++	register void *reg_sp __asm__ (&quot;rsp&quot;);
+ #endif
+ 
+-#define PTR_ADD(type, x, y)  (type) ((ptr_t)x + (ptr_t)y)
+-#define PTR_ADD2(type, x, y, z)  (type) ((ptr_t)x + (ptr_t)y + (ptr_t)z)
+-#define PTR_SUB(type, x, y)  (type) ((ptr_t)x - (ptr_t)y)
+-
+ 
+ /* File descriptors and output buffer */
+-static int ifd = -1;
++static i32 ifd = -1;
+ static FILE *ofile = NULL;  /* much data - we need caching */
+ 
+ /* Output control */
+-static int active = 0;
+-static int stage = 0;  /* 0: no output */
++static u8 active = 0;
++static i32 stage = 0;  /* 0: no output */
+ 
+ /* Input parameters */
+ /* Output filtering */
+@@ -76,7 +68,7 @@ static size_t malloc_size = 0;
+ /* Backtracing */
+ 
+ /* This is a global variable set at program start time. It marks the
+-   highest used stack address. */
++   greatest used stack address. */
+ extern void *__libc_stack_end;
+ 
+ /* relevant start and end code addresses of .text segment */
+@@ -97,7 +89,7 @@ static void *code_addr = NULL;
+ void __attribute ((constructor)) memdisc_init (void)
+ {
+ 	ssize_t rbytes;
+-	int read_tries;
++	i32 read_tries;
+ 	char ibuf[128] = { 0 };
+ 	void *heap_start = NULL, *heap_soffs = NULL, *heap_eoffs = NULL;
+ 
+@@ -234,8 +226,8 @@ parse_err:
+ static void dump_stack_raw (void)
+ {
+ 	void *offs;
+-	int col = 0;
+-	int byte;
++	i32 col = 0;
++	i32 byte;
+ 
+ 	printf(&quot;reg_sp: %p\n\n&quot;, reg_sp);
+ 	for (offs = reg_sp; offs &lt; __libc_stack_end; offs++) {
+@@ -260,11 +252,11 @@ static void dump_stack_raw (void)
+  *
+  * We expect the stack pointer to be (32/64 bit) memory aligned here.
+  */
+-static int find_code_pointers (char *obuf, int obuf_offs)
++static i32 find_code_pointers (char *obuf, i32 obuf_offs)
+ {
+ 	void *offs, *code_ptr;
+-	int i = 0;
+-	int found = 0;
++	i32 i = 0;
++	i32 found = 0;
+ 
+ 	printf(PFX &quot;reg_sp: %p\n&quot;, reg_sp);
+ 	for (offs = reg_sp;
+@@ -301,9 +293,9 @@ static int find_code_pointers (char *obuf, int obuf_offs)
+ void *malloc (size_t size)
+ {
+ 	void *mem_addr;
+-	int wbytes;
++	i32 wbytes;
+ 	char obuf[BUF_SIZE];
+-	int obuf_offs = 0, found = 1;
++	i32 obuf_offs = 0, found = 1;
+ 	static void *(*orig_malloc)(size_t size) = NULL;
+ 
+ 	/* get the libc malloc function */
+@@ -339,7 +331,7 @@ out:
+ #ifdef OW_FREE
+ void free (void *ptr)
+ {
+-	int wbytes;
++	i32 wbytes;
+ 	char obuf[BUF_SIZE];
+ 	static void (*orig_free)(void *ptr) = NULL;
+ 
+diff --git a/linuxhooking/libmemhack.c b/linuxhooking/libmemhack.c
+index efef5d9..28cf193 100644
+--- a/linuxhooking/libmemhack.c
++++ b/linuxhooking/libmemhack.c
+@@ -25,6 +25,7 @@
+ #include &lt;signal.h&gt;     /* sigignore */
+ #include &lt;unistd.h&gt;     /* read */
+ #include &lt;limits.h&gt;     /* PIPE_BUF */
++#include &quot;../src/common.h&quot;
+ 
+ #define PFX &quot;[memhack] &quot;
+ #define OW_MALLOC 1
+@@ -34,29 +35,20 @@
+ #define DYNMEM_OUT &quot;/tmp/memhack_out&quot;
+ 
+ #define PTR_INVAL (void *) 1
+-#define MAX_STACK 4
++#define NUM_CFG_PAGES 4
+ 
+ #define DEBUG 0
+ #if !DEBUG
+ 	#define printf(...) do { } while (0);
+ #endif
+ 
+-typedef unsigned long long u64;
+-typedef unsigned int u32;
+-
+ /* get the stack pointer (x86 only) */
+ #ifdef __i386__
+-register void *reg_sp __asm__ (&quot;esp&quot;);
+-typedef u32 ptr_t;
++	register void *reg_sp __asm__ (&quot;esp&quot;);
+ #else
+-register void *reg_sp __asm__ (&quot;rsp&quot;);
+-typedef u64 ptr_t;
++	register void *reg_sp __asm__ (&quot;rsp&quot;);
+ #endif
+ 
+-#define PTR_ADD(type, x, y)  (type) ((ptr_t)x + (ptr_t)y)
+-#define PTR_ADD2(type, x, y, z)  (type) ((ptr_t)x + (ptr_t)y + (ptr_t)z)
+-#define PTR_SUB(type, x, y)  (type) ((ptr_t)x - (ptr_t)y)
+-
+ /* Config structure */
+ struct cfg {
+ 	size_t mem_size;
+@@ -68,15 +60,19 @@ struct cfg {
+ typedef struct cfg cfg_s;
+ 
+ 
+-/* cfg_s pointers followed by cfg structs */
+-cfg_s *config[PIPE_BUF/sizeof(cfg_s *)] = { NULL };
++/*
++ * cfg_s pointers followed by cfg structs
++ * followed by tracked memory addresses
++ * (hacky but aligned to page size)
++ */
++cfg_s *config[NUM_CFG_PAGES * PIPE_BUF / sizeof(cfg_s *)] = { NULL };
+ 
+ /* File descriptors and output buffer */
+-static int ofd = -1, ifd = -1;
++static i32 ofd = -1, ifd = -1;
+ static char obuf[BUF_SIZE];
+ 
+ /* Output control */
+-static int active = 0;
++static u8 active = 0;
+ 
+ /* Stack check */
+ /*
+@@ -97,9 +93,9 @@ void __attribute ((constructor)) memhack_init (void)
+ {
+ 	ssize_t rbytes;
+ 	char ibuf[BUF_SIZE] = { 0 };
+-	int i, j, k, ibuf_offs = 0, num_cfg = 0, cfg_offs = 0, scanned = 0;
++	i32 i, j, k, ibuf_offs = 0, num_cfg = 0, cfg_offs = 0, scanned = 0;
+ 	u32 max_obj;
+-	int read_tries;
++	i32 read_tries;
+ 
+ 	sigignore(SIGPIPE);
+ 	sigignore(SIGCHLD);
+@@ -212,7 +208,7 @@ err:
+ void *malloc (size_t size)
+ {
+ 	void *mem_addr, *stack_addr;
+-	int i, j, wbytes;
++	i32 i, j, wbytes;
+ 	static void *(*orig_malloc)(size_t size) = NULL;
+ 
+ 	/* get the libc malloc function */
+@@ -266,7 +262,7 @@ found:
+ #ifdef OW_FREE
+ void free (void *ptr)
+ {
+-	int i, j, wbytes;
++	i32 i, j, wbytes;
+ 	static void (*orig_free)(void *ptr) = NULL;
+ 
+ 	if (active &amp;&amp; ptr != NULL) {
+diff --git a/linuxhooking/ugpreload.c b/linuxhooking/ugpreload.c
+index 7c0db1d..7075534 100644
+--- a/linuxhooking/ugpreload.c
++++ b/linuxhooking/ugpreload.c
+@@ -20,18 +20,16 @@
+ #include &lt;stdio.h&gt;
+ #include &lt;unistd.h&gt;
+ #include &lt;string.h&gt;
++#include &quot;../src/common.h&quot;
+ 
+ /* env var to be added */
+ #define PRELOAD_VAR &quot;LD_PRELOAD&quot;
+ 
+-typedef unsigned long long u64;
+-typedef unsigned int u32;
+-
+ /*
+  * This function has been taken from 'glc' by nullkey aka
+  * Pyry Haulos &lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">pyry.haulos at gmail.com</A>&gt;
+  */
+-int env_append (const char *name, const char *val, char separator)
++i32 env_append (const char *name, const char *val, char separator)
+ {
+ 	size_t env_len;
+ 	const char *old_env;
+@@ -69,7 +67,7 @@ char Help[] =
+ &quot;Usage: &lt;lib_path&gt; &lt;app_path&gt; [app_opts]\n&quot;
+ ;
+ 
+-int main (int argc, char *argv[])
++i32 main (i32 argc, char *argv[])
+ {
+ 	char *app_path = NULL;
+ 
+diff --git a/src/cfgentry.h b/src/cfgentry.h
+index 49a6038..5af50ce 100644
+--- a/src/cfgentry.h
++++ b/src/cfgentry.h
+@@ -23,8 +23,6 @@
+ #include &lt;list&gt;
+ #include &quot;common.h&quot;
+ 
+-#define MAX_STACK 4
+-
+ enum {
+ 	DO_UNCHECKED,
+ 	DO_LT,
+diff --git a/src/common.h b/src/common.h
+index c663a46..6ea5b28 100644
+--- a/src/common.h
++++ b/src/common.h
+@@ -21,9 +21,9 @@
+ 
+ #include &lt;limits.h&gt;
+ #ifdef __cplusplus
+-#include &lt;iostream&gt;
+-#include &lt;string&gt;
+-using namespace std;
++	#include &lt;iostream&gt;
++	#include &lt;string&gt;
++	using namespace std;
+ #endif
+ 
+ // Common types
+@@ -37,29 +37,33 @@ typedef long long i64;
+ typedef unsigned long long u64;
+ typedef unsigned long ulong;
+ #ifndef __linux__
+-typedef int pid_t;
++	typedef int pid_t;
+ #endif
+ 
+ #ifdef __i386__
+-typedef u32 ptr_t;
++	typedef u32 ptr_t;
+ #else
+-typedef u64 ptr_t;
++	typedef u64 ptr_t;
+ #endif
+ 
++// Common defines
++#define MAX_STACK 8
++
+ // for Windows as not in limits.h
+ #ifndef PIPE_BUF
+-#define PIPE_BUF 4096
++	#define PIPE_BUF 4096
+ #endif
+ 
+ // Common macros
+ #define PTR_ADD(type, x, y)  (type) ((ptr_t)x + (ptr_t)y)
++#define PTR_ADD2(type, x, y, z)  (type) ((ptr_t)x + (ptr_t)y + (ptr_t)z)
+ #define PTR_SUB(type, x, y)  (type) ((ptr_t)x - (ptr_t)y)
+ 
+ // Common functions
+ #ifdef __cplusplus
+-template &lt;class T&gt;
+-string to_string (T val);
+-char *to_c_str(string *str);
++	template &lt;class T&gt;
++	string to_string (T val);
++	char *to_c_str(string *str);
+ #endif
+ 
+ #endif
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000010.html">[Ugtrain-devel] [PATCH] ugtrain: introduce 'dynmemign' config	command
+</A></li>
+	<LI>Next message: <A HREF="000012.html">[Ugtrain-devel] [PATCH] libmemhack: fix and enhance config buffer	handling
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#11">[ date ]</a>
+              <a href="thread.html#11">[ thread ]</a>
+              <a href="subject.html#11">[ subject ]</a>
+              <a href="author.html#11">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

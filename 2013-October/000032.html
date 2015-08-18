@@ -1,0 +1,228 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain,	libmemhack: add GNU backtrace support
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-October/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%2C%0A%09libmemhack%3A%20add%20GNU%20backtrace%20support&In-Reply-To=%3C1381576166-4339-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000031.html">
+   <LINK REL="Next"  HREF="000033.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain,	libmemhack: add GNU backtrace support</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%2C%0A%09libmemhack%3A%20add%20GNU%20backtrace%20support&In-Reply-To=%3C1381576166-4339-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain,	libmemhack: add GNU backtrace support">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Sat Oct 12 13:09:26 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000031.html">[Ugtrain-devel] [PATCH] discovery: add GNU backtrace support
+</A></li>
+        <LI>Next message: <A HREF="000033.html">[Ugtrain-devel] [PATCH] adaption: add GNU backtrace support
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#32">[ date ]</a>
+              <a href="thread.html#32">[ thread ]</a>
+              <a href="subject.html#32">[ subject ]</a>
+              <a href="author.html#32">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>If GNU backtrace() doesn't crash during discovery stage 3, then
+we can use it in libmemhack as well. We introduce the 'use_gbt'
+config command to activate it. All configured stack offsets are
+ignored then.
+---
+ linuxhooking/libmemhack.c | 29 ++++++++++++++++++++++++++++-
+ src/cfgparser.cpp         | 12 +++++++++++-
+ src/options.c             |  1 +
+ src/options.h             |  1 +
+ src/ugtrain.cpp           |  5 +++++
+ 5 files changed, 46 insertions(+), 2 deletions(-)
+
+diff --git a/linuxhooking/libmemhack.c b/linuxhooking/libmemhack.c
+index 03a36bb..4e0048a 100644
+--- a/linuxhooking/libmemhack.c
++++ b/linuxhooking/libmemhack.c
+@@ -30,6 +30,7 @@
+ #include &lt;signal.h&gt;     /* sigignore */
+ #include &lt;unistd.h&gt;     /* read */
+ #include &lt;limits.h&gt;     /* PIPE_BUF */
++#include &lt;execinfo.h&gt;   /* backtrace */
+ #include &quot;../src/common.h&quot;
+ 
+ #define PFX &quot;[memhack] &quot;
+@@ -54,6 +55,11 @@
+ 	register void *reg_sp __asm__ (&quot;rsp&quot;);
+ #endif
+ 
++/*
++ * ATTENTION: GNU backtrace() might crash with SIGSEGV!
++ */
++static bool use_gbt = false;
++
+ /* Config structure */
+ struct cfg {
+ 	size_t mem_size;
+@@ -101,6 +107,7 @@ void __attribute ((constructor)) memhack_init (void)
+ 	u32 i, j, k, ibuf_offs = 0, num_cfg = 0, cfg_offs = 0;
+ 	u32 max_obj;
+ 	i32 read_tries, scanned = 0;
++	char gbt_buf[sizeof(GBT_CMD)] = { 0 };
+ 
+ 	sigignore(SIGPIPE);
+ 	sigignore(SIGCHLD);
+@@ -133,6 +140,13 @@ void __attribute ((constructor)) memhack_init (void)
+ 	if (scanned != 1)
+ 		goto err;
+ 	SET_IBUF_OFFS(1, j);
++	if (sscanf(ibuf + ibuf_offs, &quot;%3s;&quot;, gbt_buf) == 1 &amp;&amp;
++	    strncmp(gbt_buf, GBT_CMD, sizeof(GBT_CMD) - 1) == 0) {
++		use_gbt = true;
++		SET_IBUF_OFFS(1, j);
++		fprintf(stdout, PFX &quot;Using GNU backtrace(). &quot;
++			&quot;This might crash with SIGSEGV!\n&quot;);
++	}
+ 	cfg_offs = (num_cfg + 1) * sizeof(cfg_s *);  /* NULL for cfg_s* end */
+ 	if (cfg_offs + num_cfg * sizeof(cfg_s) &gt; sizeof(config) ||
+ 	    num_cfg == 0) {
+@@ -239,7 +253,8 @@ err:
+ void *malloc (size_t size)
+ {
+ 	void *mem_addr, *stack_addr;
+-	i32 i, j, wbytes;
++	i32 i, j, wbytes, num_taddr = 0;
++	void *trace[MAX_GNUBT] = { NULL };
+ 	static void *(*orig_malloc)(size_t size) = NULL;
+ 
+ 	/* get the libc malloc function */
+@@ -253,6 +268,18 @@ void *malloc (size_t size)
+ 			if (size != config[i]-&gt;mem_size)
+ 				continue;
+ 
++			if (use_gbt) {
++				num_taddr = backtrace(trace, MAX_GNUBT);
++				if (num_taddr &lt; 2)
++					continue;
++				/* skip the first code addr (our own one) */
++				for (j = 1; j &lt; num_taddr; j++) {
++					if (trace[j] == config[i]-&gt;code_addr)
++						goto found;
++				}
++				continue;
++			}
++
+ 			for (j = 0; j &lt; MAX_STACK; j++) {
+ 				stack_addr = PTR_SUB(void *, __libc_stack_end,
+ 					config[i]-&gt;stack_offs[j]);
+diff --git a/src/cfgparser.cpp b/src/cfgparser.cpp
+index 35cb737..94ef2ca 100644
+--- a/src/cfgparser.cpp
++++ b/src/cfgparser.cpp
+@@ -36,7 +36,8 @@ enum {
+ 	NAME_DYNMEM_IGN,
+ 	NAME_ADAPT,
+ 	NAME_ADP_REQ,
+-	NAME_GAME_PATH
++	NAME_GAME_PATH,
++	NAME_USE_GBT
+ };
+ 
+ static inline void proc_name_err (string *line, u32 lidx)
+@@ -126,6 +127,8 @@ static string parse_value_name (string *line, u32 lnr, u32 *start,
+ 			*name_type = NAME_GAME_PATH;
+ 		else
+ 			*name_type = NAME_REGULAR;
++	} else if (ret == &quot;use_gbt&quot;) {
++		*name_type = NAME_USE_GBT;
+ 	} else {
+ 		*name_type = NAME_REGULAR;
+ 	}
+@@ -483,6 +486,13 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			opt-&gt;game_path = to_c_str(&amp;tmp_str);
+ 			break;
+ 
++		case NAME_USE_GBT:
++			if (in_dynmem)
++				cfg_parse_err(&amp;line, lnr, start);
++
++			opt-&gt;use_gbt = true;
++			break;
++
+ 		default:
+ 			cfg_en.checks = NULL;
+ 			cfg_en.dynval = DYN_VAL_NONE;
+diff --git a/src/options.c b/src/options.c
+index c5de05a..757c600 100644
+--- a/src/options.c
++++ b/src/options.c
+@@ -101,6 +101,7 @@ static void init_options (struct app_options *opt)
+ 	opt-&gt;adp_script = NULL;
+ 	opt-&gt;adp_required = false;
+ 	opt-&gt;adp_req_line = 0;
++	opt-&gt;use_gbt = false;
+ 	opt-&gt;disc_addr = NULL;
+ }
+ 
+diff --git a/src/options.h b/src/options.h
+index b39f3cd..bda1f1d 100644
+--- a/src/options.h
++++ b/src/options.h
+@@ -34,6 +34,7 @@ struct app_options {
+ 	char	*home;
+ 	char	*proc_name;
+ 	char	*game_path;
++	bool	use_gbt;
+ 	void	*disc_addr;
+ };
+ 
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index 0dbccdb..0c8eaaf 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -537,6 +537,11 @@ static i32 prepare_dynmem (struct app_options *opt, list&lt;CfgEntry&gt; *cfg,
+ 		goto skip_memhack;
+ 	}
+ 
++	if (opt-&gt;use_gbt) {
++		pos += snprintf(obuf + pos, sizeof(obuf) - pos,
++			&quot;;%s&quot;, GBT_CMD);
++	}
++
+ 	// fill the output buffer with the dynmem cfg
+ 	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
+ 		if (it-&gt;dynmem &amp;&amp; it-&gt;dynmem-&gt;code_addr != old_code_addr) {
+-- 
+1.8.1.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000031.html">[Ugtrain-devel] [PATCH] discovery: add GNU backtrace support
+</A></li>
+	<LI>Next message: <A HREF="000033.html">[Ugtrain-devel] [PATCH] adaption: add GNU backtrace support
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#32">[ date ]</a>
+              <a href="thread.html#32">[ thread ]</a>
+              <a href="subject.html#32">[ subject ]</a>
+              <a href="author.html#32">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

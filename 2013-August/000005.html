@@ -1,0 +1,110 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] configure.in: fix linuxhooking compilation
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-August/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20configure.in%3A%20fix%20linuxhooking%20compilation&In-Reply-To=%3C1377957062-30620-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000004.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] configure.in: fix linuxhooking compilation</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20configure.in%3A%20fix%20linuxhooking%20compilation&In-Reply-To=%3C1377957062-30620-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] configure.in: fix linuxhooking compilation">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Sat Aug 31 15:51:02 CEST 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000004.html">[Ugtrain-devel] [PATCH] examples: add warzone2100 32-bit adaption
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#5">[ date ]</a>
+              <a href="thread.html#5">[ thread ]</a>
+              <a href="subject.html#5">[ subject ]</a>
+              <a href="author.html#5">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>The commit &quot;autotools: don't compile linuxhooking on non-linux&quot;
+broke the linuxhooking compilation on Linux. We use
+AC_CANONICAL_SYSTEM instead of AC_CANONICAL_HOST now and check
+$target_os for &quot;linux-gnu&quot;. That seems to finally work.
+---
+ configure.in | 9 ++++-----
+ 1 file changed, 4 insertions(+), 5 deletions(-)
+
+diff --git a/configure.in b/configure.in
+index 504f2a6..0940c76 100644
+--- a/configure.in
++++ b/configure.in
+@@ -7,9 +7,10 @@ EMAIL=<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">sebastian.riemer at gmx.de</A>
+ 
+ AC_INIT(ugtrain, 0.2.0, <A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">sebastian.riemer at gmx.de</A>)
+ 
+-AM_INIT_AUTOMAKE(ugtrain, 0.2.0)
+ AC_CONFIG_MACRO_DIR(m4)
++AC_CANONICAL_SYSTEM
+ 
++AM_INIT_AUTOMAKE(ugtrain, 0.2.0)
+ AM_MAINTAINER_MODE
+ 
+ AC_PROG_LIBTOOL
+@@ -22,14 +23,12 @@ LIB_AGE=0
+ VERSION_INFO=&quot;$LIB_CURRENT:$LIB_REVERSION:$LIB_AGE&quot;
+ AC_SUBST(VERSION_INFO)
+ 
+-AC_CANONICAL_HOST
+-
+ # Checks for programs.
+ AC_PROG_CXX
+ AC_PROG_CC
+ AM_PROG_CC_STDC
+ 
+-case $host in
++case $target in
+   *i[[3456789]]86*)
+     TMP_CC=&quot;$CC&quot;
+     CC=&quot;$CC -m64&quot;
+@@ -49,7 +48,7 @@ case $host in
+     CC=&quot;$TMP_CC&quot;
+     ;;
+ esac
+-AM_CONDITIONAL([LINUX], test &quot;x$host_os_linux&quot; = &quot;xyes&quot;)
++AM_CONDITIONAL([LINUX], test &quot;$target_os&quot; = &quot;linux-gnu&quot;)
+ 
+ # Checks for pkg-config.
+ AC_SUBST(DEPS_CFLAGS)
+-- 
+1.8.1.5
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000004.html">[Ugtrain-devel] [PATCH] examples: add warzone2100 32-bit adaption
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#5">[ date ]</a>
+              <a href="thread.html#5">[ thread ]</a>
+              <a href="subject.html#5">[ subject ]</a>
+              <a href="author.html#5">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

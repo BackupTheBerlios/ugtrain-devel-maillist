@@ -1,0 +1,255 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH 2/4] examples: adapt: don't exit in common	code
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2014-January/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%202/4%5D%20examples%3A%20adapt%3A%20don%27t%20exit%20in%20common%0A%09code&In-Reply-To=%3C1389256353-12541-3-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000077.html">
+   <LINK REL="Next"  HREF="000079.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH 2/4] examples: adapt: don't exit in common	code</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%202/4%5D%20examples%3A%20adapt%3A%20don%27t%20exit%20in%20common%0A%09code&In-Reply-To=%3C1389256353-12541-3-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH 2/4] examples: adapt: don't exit in common	code">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Thu Jan  9 09:32:30 CET 2014</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000077.html">[Ugtrain-devel] [PATCH 1/4] examples: warzone2100: add version	2.3.9 adaption
+</A></li>
+        <LI>Next message: <A HREF="000079.html">[Ugtrain-devel] [PATCH 3/4] adapt: warzone2100: 64-bit: try 3 lines	if 4 don't work
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#78">[ date ]</a>
+              <a href="thread.html#78">[ thread ]</a>
+              <a href="subject.html#78">[ subject ]</a>
+              <a href="author.html#78">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>The adaption script writer should have the ability to decide if he
+wants to exit upon an issue while running a common adaption
+function or to try another one.
+---
+ examples/adapt/_common_adapt.sh        |   22 ++++++++++++----------
+ examples/adapt/chromium-bsu_adapt32.sh |    2 ++
+ examples/adapt/chromium-bsu_adapt64.sh |    2 ++
+ examples/adapt/warzone2100_adapt32.sh  |    3 +++
+ examples/adapt/warzone2100_adapt64.sh  |    5 +++++
+ 5 files changed, 24 insertions(+), 10 deletions(-)
+
+diff --git a/examples/adapt/_common_adapt.sh b/examples/adapt/_common_adapt.sh
+index 4550168..c0cbb54 100644
+--- a/examples/adapt/_common_adapt.sh
++++ b/examples/adapt/_common_adapt.sh
+@@ -14,19 +14,20 @@ function get_malloc_code_3()
+     explines=$4
+     taillines=$5
+     isunique=0
++    RC=0
+ 
+     IFS=`printf '\n+'`
+     if [ $DEBUG -eq 1 ]; then echo &quot;objdump -D $app_path | grep $fname -B 2 -A 1 | grep -A 2 $msize&quot;; fi
+     CODE_PART=`objdump -D &quot;$app_path&quot; | grep &quot;$fname&quot; -B 2 -A 1 \
+               | grep -A 2 &quot;$msize&quot;`
+-    if [ &quot;$CODE_PART&quot; == &quot;&quot; ]; then exit 1; fi
++    if [ &quot;$CODE_PART&quot; == &quot;&quot; ]; then RC=1; return; fi
+     if [ $DEBUG -eq 1 ]; then echo -e &quot;$CODE_PART&quot;; fi
+ 
+     CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
+     if [ $CODE_LINES -eq 3 ]; then
+         isunique=1
+     elif [ $CODE_LINES -ne $explines ]; then
+-	exit 1
++	RC=1; return
+     fi
+ 
+     if [ $isunique -ne 1 ]; then
+@@ -34,16 +35,16 @@ function get_malloc_code_3()
+         CODE_PART=`echo -e &quot;$CODE_PART&quot; | head -n 3`
+ 
+         CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
+-        if [ $CODE_LINES -ne 3 ]; then exit 1; fi
++        if [ $CODE_LINES -ne 3 ]; then RC=1; return; fi
+     fi
+ 
+     CODE_CALL=`echo -e &quot;$CODE_PART&quot; | cut -d '
+ ' -f 2 | grep call`
+-    if [ &quot;$CODE_CALL&quot; == &quot;&quot; ]; then exit 1; fi
++    if [ &quot;$CODE_CALL&quot; == &quot;&quot; ]; then RC=1; return; fi
+ 
+     CODE_ADDR=`echo -e &quot;$CODE_PART&quot; | cut -d '
+ ' -f 3 | cut -d ':' -f 1 | tr -d [:blank:]`
+-    if [ &quot;$CODE_ADDR&quot; == &quot;&quot; ]; then exit 1; fi
++    if [ &quot;$CODE_ADDR&quot; == &quot;&quot; ]; then RC=1; return; fi
+     IFS=''
+ }
+ 
+@@ -55,19 +56,20 @@ function get_malloc_code_4()
+     explines=$4
+     taillines=$5
+     isunique=0
++    RC=0
+ 
+     IFS=`printf '\n+'`
+     if [ $DEBUG -eq 1 ]; then echo &quot;objdump -D $app_path | grep $fname -B 2 -A 1 | grep -A 3 $msize&quot;; fi
+     CODE_PART=`objdump -D &quot;$app_path&quot; | grep &quot;$fname&quot; -B 2 -A 1 \
+               | grep -A 3 &quot;$msize&quot;`
+-    if [ &quot;$CODE_PART&quot; == &quot;&quot; ]; then exit 1; fi
++    if [ &quot;$CODE_PART&quot; == &quot;&quot; ]; then RC=1; return; fi
+     if [ $DEBUG -eq 1 ]; then echo -e &quot;$CODE_PART&quot;; fi
+ 
+     CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
+     if [ $CODE_LINES -eq 4 ]; then
+         isunique=1
+     elif [ $CODE_LINES -ne $explines ]; then
+-        exit 1
++        RC=1; return
+     fi
+ 
+     if [ $isunique -ne 1 ]; then
+@@ -75,14 +77,14 @@ function get_malloc_code_4()
+         CODE_PART=`echo -e &quot;$CODE_PART&quot; | head -n 4`
+ 
+         CODE_LINES=`echo -e &quot;$CODE_PART&quot; | wc -l`
+-        if [ $CODE_LINES -ne 4 ]; then exit 1; fi
++        if [ $CODE_LINES -ne 4 ]; then RC=1; return; fi
+     fi
+ 
+     CODE_CALL=`echo -e &quot;$CODE_PART&quot; | cut -d '
+ ' -f 3 | grep call`
+-    if [ &quot;$CODE_CALL&quot; == &quot;&quot; ]; then exit 1; fi
++    if [ &quot;$CODE_CALL&quot; == &quot;&quot; ]; then RC=1; return; fi
+ 
+     CODE_ADDR=`echo -e &quot;$CODE_PART&quot; | cut -d '
+ ' -f 4 | cut -d ':' -f 1 | tr -d [:blank:]`
+-    if [ &quot;$CODE_ADDR&quot; == &quot;&quot; ]; then exit 1; fi
++    if [ &quot;$CODE_ADDR&quot; == &quot;&quot; ]; then RC=1; return; fi
+ }
+diff --git a/examples/adapt/chromium-bsu_adapt32.sh b/examples/adapt/chromium-bsu_adapt32.sh
+index 448c701..99ab994 100755
+--- a/examples/adapt/chromium-bsu_adapt32.sh
++++ b/examples/adapt/chromium-bsu_adapt32.sh
+@@ -11,10 +11,12 @@
+ CWD=`dirname $0`
+ cd &quot;$CWD&quot;
+ APP_PATH=&quot;$1&quot;
++RC=0
+ 
+ . _common_adapt.sh
+ 
+ get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwj at plt</A>\&gt;&quot; &quot;0x110&quot; 3 3
++if [ $RC -ne 0 ]; then exit 1; fi
+ 
+ RESULT=`echo &quot;1;HeroAircraft;0x$CODE_ADDR&quot;`
+ echo &quot;$RESULT&quot;
+diff --git a/examples/adapt/chromium-bsu_adapt64.sh b/examples/adapt/chromium-bsu_adapt64.sh
+index e50d677..779a3e4 100755
+--- a/examples/adapt/chromium-bsu_adapt64.sh
++++ b/examples/adapt/chromium-bsu_adapt64.sh
+@@ -11,10 +11,12 @@
+ CWD=`dirname $0`
+ cd &quot;$CWD&quot;
+ APP_PATH=&quot;$1&quot;
++RC=0
+ 
+ . _common_adapt.sh
+ 
+ get_malloc_code_4 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x120&quot; 4 4
++if [ $RC -ne 0 ]; then exit 1; fi
+ 
+ RESULT=`echo &quot;1;HeroAircraft;0x$CODE_ADDR&quot;`
+ echo &quot;$RESULT&quot;
+diff --git a/examples/adapt/warzone2100_adapt32.sh b/examples/adapt/warzone2100_adapt32.sh
+index 4b808b3..1ef46d4 100755
+--- a/examples/adapt/warzone2100_adapt32.sh
++++ b/examples/adapt/warzone2100_adapt32.sh
+@@ -10,11 +10,13 @@ CWD=`dirname $0`
+ cd &quot;$CWD&quot;
+ APP_PATH=&quot;$1&quot;
+ APP_VERS=`${APP_PATH} --version | grep -o &quot;\([0-9]\+\\.\)\{2\}[0-9]\+&quot;`
++RC=0
+ 
+ . _common_adapt.sh
+ 
+ if [ &quot;$APP_VERS&quot; == &quot;2.3.8&quot; -o &quot;$APP_VERS&quot; == &quot;2.3.9&quot; ]; then
+   get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; &quot;0x36c&quot; 3 3
++  if [ $RC -ne 0 ]; then exit 1; fi
+ fi
+ 
+ CODE_ADDR1=&quot;$CODE_ADDR&quot;
+@@ -23,6 +25,7 @@ CODE_ADDR1=&quot;$CODE_ADDR&quot;
+ 
+ if [ &quot;$APP_VERS&quot; == &quot;2.3.8&quot; -o &quot;$APP_VERS&quot; == &quot;2.3.9&quot; ]; then
+   get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; &quot;0x128&quot; 7 7
++  if [ $RC -ne 0 ]; then exit 1; fi
+ fi
+ 
+ CODE_ADDR2=&quot;$CODE_ADDR&quot;
+diff --git a/examples/adapt/warzone2100_adapt64.sh b/examples/adapt/warzone2100_adapt64.sh
+index cf06b5f..a3ac0d5 100755
+--- a/examples/adapt/warzone2100_adapt64.sh
++++ b/examples/adapt/warzone2100_adapt64.sh
+@@ -10,13 +10,16 @@ CWD=`dirname $0`
+ cd &quot;$CWD&quot;
+ APP_PATH=&quot;$1&quot;
+ APP_VERS=`${APP_PATH} --version | grep -o &quot;\([0-9]\+\\.\)\{2\}[0-9]\+&quot;`
++RC=0
+ 
+ . _common_adapt.sh
+ 
+ if [ &quot;$APP_VERS&quot; == &quot;2.3.8&quot; -o &quot;$APP_VERS&quot; == &quot;2.3.9&quot; ]; then
+     get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; &quot;0x410,&quot; 3 3
++    if [ $RC -ne 0 ]; then exit 1; fi
+ else
+     get_malloc_code_4 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x360,&quot; 4 4
++    if [ $RC -ne 0 ]; then exit 1; fi
+ fi
+ 
+ CODE_ADDR1=&quot;$CODE_ADDR&quot;
+@@ -25,8 +28,10 @@ CODE_ADDR1=&quot;$CODE_ADDR&quot;
+ 
+ if [ &quot;$APP_VERS&quot; == &quot;2.3.8&quot; -o &quot;$APP_VERS&quot; == &quot;2.3.9&quot; ]; then
+     get_malloc_code_3 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">malloc at plt</A>\&gt;&quot; &quot;0x160,&quot; 7 7
++    if [ $RC -ne 0 ]; then exit 1; fi
+ else
+     get_malloc_code_4 &quot;$APP_PATH&quot; &quot;\&lt;<A HREF="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">_Znwm at plt</A>\&gt;&quot; &quot;0x1a8,&quot; 8 4
++    if [ $RC -ne 0 ]; then exit 1; fi
+ fi
+ 
+ CODE_ADDR2=&quot;$CODE_ADDR&quot;
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000077.html">[Ugtrain-devel] [PATCH 1/4] examples: warzone2100: add version	2.3.9 adaption
+</A></li>
+	<LI>Next message: <A HREF="000079.html">[Ugtrain-devel] [PATCH 3/4] adapt: warzone2100: 64-bit: try 3 lines	if 4 don't work
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#78">[ date ]</a>
+              <a href="thread.html#78">[ thread ]</a>
+              <a href="subject.html#78">[ subject ]</a>
+              <a href="author.html#78">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,248 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain: fix allocation and freeing of	dynmem
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-December/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20fix%20allocation%20and%20freeing%20of%0A%09dynmem&In-Reply-To=%3C1386059218-18708-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000069.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain: fix allocation and freeing of	dynmem</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20fix%20allocation%20and%20freeing%20of%0A%09dynmem&In-Reply-To=%3C1386059218-18708-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain: fix allocation and freeing of	dynmem">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Tue Dec  3 09:26:58 CET 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000069.html">[Ugtrain-devel] [PATCH TRIVIAL] ugtrain: unify type conversion style
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#72">[ date ]</a>
+              <a href="thread.html#72">[ thread ]</a>
+              <a href="subject.html#72">[ subject ]</a>
+              <a href="author.html#72">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>We need to allocate old values for all cfg entries and not only for
+the active ones. We also have to free them all again as we need to
+reset them to initial values before using them again.
+---
+ src/ugtrain.cpp |  123 +++++++++++++++++++++++++++++++++++--------------------
+ 1 file changed, 78 insertions(+), 45 deletions(-)
+
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index ce3d7fc..5a6f961 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -679,6 +679,20 @@ static void allocate_ptrmem (CfgEntry *cfg_en)
+ 	}
+ }
+ 
++static void deallocate_ptrmem (CfgEntry *cfg_en, u32 idx)
++{
++	list&lt;CfgEntry*&gt; *cfg = &amp;cfg_en-&gt;ptrtgt-&gt;cfg;
++	list&lt;CfgEntry*&gt;::iterator it;
++
++	cfg_en-&gt;ptrtgt-&gt;v_state.erase(cfg_en-&gt;ptrtgt-&gt;v_state.begin() + idx);
++	cfg_en-&gt;ptrtgt-&gt;v_offs.erase(cfg_en-&gt;ptrtgt-&gt;v_offs.begin() + idx);
++
++	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
++		cfg_en = *it;
++		cfg_en-&gt;v_oldval.erase(cfg_en-&gt;v_oldval.begin() + idx);
++	}
++}
++
+ /*
+  * The function run_pgrp_bg() is so hacky OS security
+  * bypassing so that it is not possible to wait for the
+@@ -1120,6 +1134,57 @@ void set_dynmem_addr (list&lt;CfgEntry&gt; *cfg,
+ 	}
+ }
+ 
++static void deallocate_objects (list&lt;CfgEntry&gt; *cfg, bool process_kicked)
++{
++	list&lt;CfgEntry&gt;::iterator it;
++	CfgEntry *cfg_en;
++	DynMemEntry *old_dynmem = NULL;
++	vector&lt;void *&gt; *mvec;
++	u32 mem_idx, ov_idx, num_kicked;
++
++	// remove old values marked to be removed by free() or by object check
++	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
++		cfg_en = &amp;(*it);
++		if (cfg_en-&gt;dynmem) {
++			mvec = &amp;cfg_en-&gt;dynmem-&gt;v_maddr;
++			for (mem_idx = 0, ov_idx = 0;
++			     mem_idx &lt; mvec-&gt;size() &amp;&amp;
++			     ov_idx &lt; cfg_en-&gt;v_oldval.size();
++			     mem_idx++, ov_idx++) {
++				if (!mvec-&gt;at(mem_idx)) {
++					cfg_en-&gt;v_oldval.erase(cfg_en-&gt;v_oldval.begin()
++						+ ov_idx);
++					if (cfg_en-&gt;ptrtgt)
++						deallocate_ptrmem(cfg_en, ov_idx);
++					ov_idx--;
++				}
++			}
++		}
++	}
++
++	// remove objects marked to be removed by free() or by object check
++	old_dynmem = NULL;
++	for (it = cfg-&gt;begin(); it != cfg-&gt;end(); it++) {
++		cfg_en = &amp;(*it);
++		if (cfg_en-&gt;dynmem &amp;&amp; cfg_en-&gt;dynmem != old_dynmem) {
++			mvec = &amp;cfg_en-&gt;dynmem-&gt;v_maddr;
++			num_kicked = 0;
++			for (mem_idx = 0; mem_idx &lt; mvec-&gt;size(); mem_idx++) {
++				if (!mvec-&gt;at(mem_idx)) {
++					mvec-&gt;erase(mvec-&gt;begin() + mem_idx);
++					num_kicked++;
++					mem_idx--;
++				}
++			}
++			if (process_kicked &amp;&amp; num_kicked &gt; 0)
++				cout &lt;&lt; &quot;===&gt; Obj. &quot; &lt;&lt; cfg_en-&gt;dynmem-&gt;name
++				     &lt;&lt; &quot; kicked out &quot; &lt;&lt; num_kicked
++				     &lt;&lt; &quot; time(s); remaining: &quot; &lt;&lt; mvec-&gt;size() &lt;&lt; endl;
++			old_dynmem = cfg_en-&gt;dynmem;
++		}
++	}
++}
++
+ i32 find_addr_idx(vector&lt;void *&gt; *vec, void *addr)
+ {
+ 	u32 i;
+@@ -1149,7 +1214,7 @@ void unset_dynmem_addr (list&lt;CfgEntry&gt; *cfg, void *argp, void *mem_addr)
+ 			idx = find_addr_idx(mvec, mem_addr);
+ 			if (idx &lt; 0)
+ 				continue;
+-			mvec-&gt;erase(mvec-&gt;begin() + idx);
++			mvec-&gt;at(idx) = NULL;
+ 			it-&gt;dynmem-&gt;num_freed++;
+ 
+ 			/*cout &lt;&lt; &quot;Obj. &quot; &lt;&lt; it-&gt;dynmem-&gt;name &lt;&lt; &quot;; c&quot;
+@@ -1183,7 +1248,7 @@ i32 main (i32 argc, char **argv, char **env)
+ 	i32 ifd = -1, ofd = -1;
+ 	struct app_options opt;
+ 	bool emptycfg = false;
+-	u32 mem_idx, ov_idx, num_kicked;
++	u32 mem_idx;
+ 	bool is_dynmem;
+ 
+ 	atexit(restore_getch);
+@@ -1405,11 +1470,13 @@ prepare_dynmem:
+ 				if (cfg_it-&gt;dynmem-&gt;num_alloc &gt; 0)
+ 					cout &lt;&lt; &quot;===&gt; Obj. &quot; &lt;&lt; cfg_it-&gt;dynmem-&gt;name
+ 					     &lt;&lt; &quot; created &quot; &lt;&lt; cfg_it-&gt;dynmem-&gt;num_alloc
+-					     &lt;&lt; &quot; time(s); now: &quot; &lt;&lt; mvec-&gt;size() &lt;&lt; endl;
++					     &lt;&lt; &quot; time(s); now: &quot; &lt;&lt; mvec-&gt;size() -
++						cfg_it-&gt;dynmem-&gt;num_freed &lt;&lt; endl;
+ 				if (cfg_it-&gt;dynmem-&gt;num_freed &gt; 0)
+ 					cout &lt;&lt; &quot;===&gt; Obj. &quot; &lt;&lt; cfg_it-&gt;dynmem-&gt;name
+ 					     &lt;&lt; &quot; freed &quot; &lt;&lt; cfg_it-&gt;dynmem-&gt;num_freed
+-					     &lt;&lt; &quot; time(s); remaining: &quot; &lt;&lt; mvec-&gt;size() &lt;&lt; endl;
++					     &lt;&lt; &quot; time(s); remaining: &quot; &lt;&lt; mvec-&gt;size() -
++						cfg_it-&gt;dynmem-&gt;num_freed &lt;&lt; endl;
+ 				cfg_it-&gt;dynmem-&gt;num_alloc = 0;
+ 				cfg_it-&gt;dynmem-&gt;num_freed = 0;
+ 				old_dynmem = cfg_it-&gt;dynmem;
+@@ -1422,9 +1489,12 @@ prepare_dynmem:
+ 			continue;
+ 		}
+ 
++		// handle freed objects
++		deallocate_objects (&amp;cfg, false);
++
+ 		// allocate old values per memory object
+-		for (it = cfg_act-&gt;begin(); it != cfg_act-&gt;end(); it++) {
+-			cfg_en = *it;
++		for (cfg_it = cfg.begin(); cfg_it != cfg.end(); cfg_it++) {
++			cfg_en = &amp;(*cfg_it);
+ 			if (cfg_en-&gt;dynmem) {
+ 				for (mem_idx = 0;
+ 				     mem_idx &lt; cfg_en-&gt;dynmem-&gt;v_maddr.size();
+@@ -1487,45 +1557,8 @@ prepare_dynmem:
+ 			return -1;
+ 		}
+ 
+-		// remove old values marked to be removed by object check
+-		for (it = cfg_act-&gt;begin(); it != cfg_act-&gt;end(); it++) {
+-			cfg_en = *it;
+-			if (cfg_en-&gt;dynmem) {
+-				mvec = &amp;cfg_en-&gt;dynmem-&gt;v_maddr;
+-				for (mem_idx = 0, ov_idx = 0;
+-				     mem_idx &lt; mvec-&gt;size() &amp;&amp;
+-				     ov_idx &lt; cfg_en-&gt;v_oldval.size();
+-				     mem_idx++, ov_idx++) {
+-					if (!mvec-&gt;at(mem_idx)) {
+-						cfg_en-&gt;v_oldval.erase(cfg_en-&gt;v_oldval.begin()
+-							+ ov_idx);
+-						ov_idx--;
+-					}
+-				}
+-			}
+-		}
+-
+-		// remove objects marked to be removed by object check
+-		old_dynmem = NULL;
+-		for (it = cfg_act-&gt;begin(); it != cfg_act-&gt;end(); it++) {
+-			cfg_en = *it;
+-			if (cfg_en-&gt;dynmem &amp;&amp; cfg_en-&gt;dynmem != old_dynmem) {
+-				mvec = &amp;cfg_en-&gt;dynmem-&gt;v_maddr;
+-				num_kicked = 0;
+-				for (mem_idx = 0; mem_idx &lt; mvec-&gt;size(); mem_idx++) {
+-					if (!mvec-&gt;at(mem_idx)) {
+-						mvec-&gt;erase(mvec-&gt;begin() + mem_idx);
+-						num_kicked++;
+-						mem_idx--;
+-					}
+-				}
+-				if (num_kicked &gt; 0)
+-					cout &lt;&lt; &quot;===&gt; Obj. &quot; &lt;&lt; cfg_en-&gt;dynmem-&gt;name
+-					     &lt;&lt; &quot; kicked out &quot; &lt;&lt; num_kicked
+-					     &lt;&lt; &quot; time(s); remaining: &quot; &lt;&lt; mvec-&gt;size() &lt;&lt; endl;
+-				old_dynmem = cfg_en-&gt;dynmem;
+-			}
+-		}
++		// deallocate memory used for objects kicked out by object check
++		deallocate_objects (&amp;cfg, true);
+ 
+ 		// output old values
+ 		old_dynmem = NULL;
+-- 
+1.7.9.5
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000069.html">[Ugtrain-devel] [PATCH TRIVIAL] ugtrain: unify type conversion style
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#72">[ date ]</a>
+              <a href="thread.html#72">[ thread ]</a>
+              <a href="subject.html#72">[ subject ]</a>
+              <a href="author.html#72">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

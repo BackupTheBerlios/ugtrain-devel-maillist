@@ -1,0 +1,75 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH V2] ugtrain: introduce dynval from cfg	entry support
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-December/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%20V2%5D%20ugtrain%3A%20introduce%20dynval%20from%20cfg%0A%09entry%20support&In-Reply-To=%3C1386058881.15226.3.camel%401005HA%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000070.html">
+   <LINK REL="Next"  HREF="000069.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH V2] ugtrain: introduce dynval from cfg	entry support</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%20V2%5D%20ugtrain%3A%20introduce%20dynval%20from%20cfg%0A%09entry%20support&In-Reply-To=%3C1386058881.15226.3.camel%401005HA%3E"
+       TITLE="[Ugtrain-devel] [PATCH V2] ugtrain: introduce dynval from cfg	entry support">Sebastian.Riemer at gmx.de
+       </A><BR>
+    <I>Tue Dec  3 09:21:21 CET 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000070.html">[Ugtrain-devel] [PATCH V2] ugtrain: introduce dynval from cfg entry	support
+</A></li>
+        <LI>Next message: <A HREF="000069.html">[Ugtrain-devel] [PATCH TRIVIAL] ugtrain: unify type conversion style
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#71">[ date ]</a>
+              <a href="thread.html#71">[ thread ]</a>
+              <a href="subject.html#71">[ subject ]</a>
+              <a href="author.html#71">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Tue, 2013-12-03 at 09:17 +0100, Sebastian Riemer wrote:
+&gt;<i> diff --git a/src/cfgparser.cpp b/src/cfgparser.cpp
+</I>&gt;<i> index 6daba0f..fd47ce1 100644
+</I>[...]
+&gt;<i> @@ -563,6 +580,7 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+</I>&gt;<i>  		default:
+</I>&gt;<i>  			cfg_en.checks = NULL;
+</I>&gt;<i>  			cfg_en.dynval = DYN_VAL_OFF;
+</I>&gt;<i> +			cfg_en.cfg_ref = NULL;
+</I>&gt;<i>  			cfg_en.addr = parse_address(cfg, NULL, &amp;line, lnr, &amp;start);
+</I>&gt;<i>  			cfg_en.size = parse_data_type(&amp;line, lnr, &amp;start,
+</I>&gt;<i>  				&amp;cfg_en.is_signed, &amp;cfg_en.is_float);
+</I>
+This required initialization was missing in V1.
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000070.html">[Ugtrain-devel] [PATCH V2] ugtrain: introduce dynval from cfg entry	support
+</A></li>
+	<LI>Next message: <A HREF="000069.html">[Ugtrain-devel] [PATCH TRIVIAL] ugtrain: unify type conversion style
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#71">[ date ]</a>
+              <a href="thread.html#71">[ thread ]</a>
+              <a href="subject.html#71">[ subject ]</a>
+              <a href="author.html#71">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

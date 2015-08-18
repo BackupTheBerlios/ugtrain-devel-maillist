@@ -1,0 +1,235 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain: introduce 'game_params' support
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2014-February/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20introduce%20%27game_params%27%20support&In-Reply-To=%3C1391803132-30259-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000099.html">
+   <LINK REL="Next"  HREF="000101.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain: introduce 'game_params' support</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20introduce%20%27game_params%27%20support&In-Reply-To=%3C1391803132-30259-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain: introduce 'game_params' support">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Fri Feb  7 20:58:51 CET 2014</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000099.html">[Ugtrain-devel] [PATCH] ugtrain: introduce 'game_call' support
+</A></li>
+        <LI>Next message: <A HREF="000101.html">[Ugtrain-devel] [PATCH] linuxhooking: only care for the game	process only once
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#100">[ date ]</a>
+              <a href="thread.html#100">[ thread ]</a>
+              <a href="subject.html#100">[ subject ]</a>
+              <a href="author.html#100">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Sometimes it is necessary to add some game command line parameters/
+options. This adds support for that and requires running the game
+with a shell. Therefore, shell commands can be used within them.
+---
+ src/cfgparser.cpp |   14 ++++++++++++++
+ src/options.c     |    4 ++++
+ src/options.h     |    2 ++
+ src/ugtrain.cpp   |   40 ++++++++++++++++++++++++++++------------
+ 4 files changed, 48 insertions(+), 12 deletions(-)
+
+diff --git a/src/cfgparser.cpp b/src/cfgparser.cpp
+index 010cfcc..4bf35ef 100644
+--- a/src/cfgparser.cpp
++++ b/src/cfgparser.cpp
+@@ -29,6 +29,7 @@ using namespace std;
+ typedef enum {
+ 	NAME_GAME_PATH,
+ 	NAME_GAME_CALL,
++	NAME_GAME_PARAMS,
+ 	NAME_USE_GBT,
+ 	NAME_REGULAR,
+ 	NAME_CHECK,
+@@ -163,6 +164,8 @@ static string parse_value_name (string *line, u32 lnr, u32 *start,
+ 			*name_type = NAME_GAME_PATH;
+ 		else if (ret.substr(5, string::npos) == &quot;call&quot;)
+ 			*name_type = NAME_GAME_CALL;
++		else if (ret.substr(5, string::npos) == &quot;params&quot;)
++			*name_type = NAME_GAME_PARAMS;
+ 		else
+ 			*name_type = NAME_REGULAR;
+ 	} else if (ret == &quot;use_gbt&quot;) {
+@@ -587,6 +590,17 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			opt-&gt;game_call = to_c_str(&amp;tmp_str);
+ 			break;
+ 
++		case NAME_GAME_PARAMS:
++			if (in_dynmem || in_ptrmem)
++				cfg_parse_err(&amp;line, lnr, start);
++
++			tmp_str = line.substr(start, string::npos);
++
++			// Copy into C string
++			opt-&gt;game_params = to_c_str(&amp;tmp_str);
++			opt-&gt;need_shell = true;
++			break;
++
+ 		case NAME_USE_GBT:
+ 			if (in_dynmem || in_ptrmem)
+ 				cfg_parse_err(&amp;line, lnr, start);
+diff --git a/src/options.c b/src/options.c
+index 003dba5..ecf4fcb 100644
+--- a/src/options.c
++++ b/src/options.c
+@@ -113,8 +113,10 @@ static void init_options (struct app_options *opt)
+ 	/* no direct CLI input */
+ 	opt-&gt;home = NULL;
+ 	opt-&gt;proc_name = NULL;
++	opt-&gt;need_shell = false;
+ 	opt-&gt;game_call = NULL;
+ 	opt-&gt;game_path = NULL;
++	opt-&gt;game_params = NULL;
+ 	opt-&gt;adp_script = NULL;
+ 	opt-&gt;adp_required = false;
+ 	opt-&gt;adp_req_line = 0;
+@@ -146,9 +148,11 @@ void parse_options (i32 argc, char **argv, struct app_options *opt)
+ 				else
+ 					opt-&gt;pre_cmd = optarg;
+ 				opt-&gt;use_glc = true;
++				opt-&gt;need_shell = true;
+ 			} else if (strncmp(long_options[opt_idx].name,
+ 			    &quot;pre-cmd&quot;, sizeof(&quot;pre-cmd&quot;) - 1) == 0) {
+ 				opt-&gt;pre_cmd = optarg;
++				opt-&gt;need_shell = true;
+ 			}
+ 			break;
+ 		case 'h':
+diff --git a/src/options.h b/src/options.h
+index c6e9e9a..52e4d21 100644
+--- a/src/options.h
++++ b/src/options.h
+@@ -38,8 +38,10 @@ struct app_options {
+ 	char	*adp_script;
+ 	char	*home;
+ 	char	*proc_name;
++	bool	need_shell;
+ 	char	*game_call;
+ 	char	*game_path;
++	char	*game_params;
+ 	bool	use_gbt;
+ 	size_t	disc_offs;
+ 	void	*disc_addr;
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index 9aa0bdb..c8b885c 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -403,7 +403,7 @@ static i32 run_game (struct app_options *opt)
+ 	char pid_str[12] = { '\0' };
+ 	string cmd_str = string(&quot;&quot;);
+ 
+-	if (!opt-&gt;pre_cmd) {
++	if (!opt-&gt;need_shell) {
+ 		cmd = (const char *) opt-&gt;game_path;
+ 
+ 		cmdv[0] = opt-&gt;game_path;
+@@ -433,13 +433,19 @@ static i32 run_game (struct app_options *opt)
+ 			pid = run_cmd_bg(cmd, cmdv, false, false);
+ 		}
+ 	} else {
+-		if (opt-&gt;use_glc) {
+-			cmd_str += GLC_PRELOADER;
++		if (opt-&gt;pre_cmd) {
++			if (opt-&gt;use_glc) {
++				cmd_str += GLC_PRELOADER;
++				cmd_str += &quot; &quot;;
++			}
++			cmd_str += opt-&gt;pre_cmd;
+ 			cmd_str += &quot; &quot;;
+ 		}
+-		cmd_str += opt-&gt;pre_cmd;
+-		cmd_str += &quot; &quot;;
+ 		cmd_str += opt-&gt;game_path;
++		if (opt-&gt;game_params) {
++			cmd_str += &quot; &quot;;
++			cmd_str += opt-&gt;game_params;
++		}
+ 		cmd = cmd_str.c_str();
+ 
+ 		if (opt-&gt;run_scanmem) {
+@@ -484,7 +490,7 @@ static i32 run_preloader (struct app_options *opt)
+ 	char pid_str[12] = { '\0' };
+ 	string cmd_str = string(&quot;&quot;);
+ 
+-	if (!opt-&gt;pre_cmd) {
++	if (!opt-&gt;need_shell) {
+ 		cmd = (const char *) PRELOADER;
+ 
+ 		cmdv[0] = (char *) PRELOADER;
+@@ -519,17 +525,27 @@ static i32 run_preloader (struct app_options *opt)
+ 			pid = run_cmd_bg(cmd, cmdv, false, false);
+ 		}
+ 	} else {
+-		if (opt-&gt;use_glc) {
+-			cmd_str += GLC_PRELOADER;
++		if (opt-&gt;pre_cmd) {
++			if (opt-&gt;use_glc) {
++				cmd_str += GLC_PRELOADER;
++				cmd_str += &quot; &quot;;
++				cmd_str += opt-&gt;pre_cmd;
++				cmd_str += &quot; --preload=&quot;;
++				cmd_str += opt-&gt;preload_lib;
++			} else {
++				cmd_str += opt-&gt;pre_cmd;
++			}
++		} else {
++			cmd_str += PRELOADER;
+ 			cmd_str += &quot; &quot;;
+-			cmd_str += opt-&gt;pre_cmd;
+-			cmd_str += &quot; --preload=&quot;;
+ 			cmd_str += opt-&gt;preload_lib;
+-		} else {
+-			cmd_str += opt-&gt;pre_cmd;
+ 		}
+ 		cmd_str += &quot; &quot;;
+ 		cmd_str += opt-&gt;game_path;
++		if (opt-&gt;game_params) {
++			cmd_str += &quot; &quot;;
++			cmd_str += opt-&gt;game_params;
++		}
+ 		cmd = cmd_str.c_str();
+ 
+ 		if (opt-&gt;run_scanmem &amp;&amp;
+-- 
+1.7.9.5
+
+</PRE>
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000099.html">[Ugtrain-devel] [PATCH] ugtrain: introduce 'game_call' support
+</A></li>
+	<LI>Next message: <A HREF="000101.html">[Ugtrain-devel] [PATCH] linuxhooking: only care for the game	process only once
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#100">[ date ]</a>
+              <a href="thread.html#100">[ thread ]</a>
+              <a href="subject.html#100">[ subject ]</a>
+              <a href="author.html#100">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>

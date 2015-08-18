@@ -1,0 +1,284 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Ugtrain-devel] [PATCH] ugtrain: introduce dynval from cfg entry	support
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/ugtrain-devel/2013-December/index.html" >
+   <LINK REL="made" HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20introduce%20dynval%20from%20cfg%20entry%0A%09support&In-Reply-To=%3C1386019594-16129-1-git-send-email-sebastian.riemer%40gmx.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000067.html">
+   <LINK REL="Next"  HREF="000070.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Ugtrain-devel] [PATCH] ugtrain: introduce dynval from cfg entry	support</H1>
+    <B>Sebastian Riemer</B> 
+    <A HREF="mailto:ugtrain-devel%40lists.berlios.de?Subject=Re%3A%20%5BUgtrain-devel%5D%20%5BPATCH%5D%20ugtrain%3A%20introduce%20dynval%20from%20cfg%20entry%0A%09support&In-Reply-To=%3C1386019594-16129-1-git-send-email-sebastian.riemer%40gmx.de%3E"
+       TITLE="[Ugtrain-devel] [PATCH] ugtrain: introduce dynval from cfg entry	support">sebastian.riemer at gmx.de
+       </A><BR>
+    <I>Mon Dec  2 22:26:34 CET 2013</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000067.html">[Ugtrain-devel] [PATCH 2/2] examples: warzone2100: 32-bit: cheat	Cyborg and VTOL factories
+</A></li>
+        <LI>Next message: <A HREF="000070.html">[Ugtrain-devel] [PATCH V2] ugtrain: introduce dynval from cfg entry	support
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#68">[ date ]</a>
+              <a href="thread.html#68">[ thread ]</a>
+              <a href="subject.html#68">[ subject ]</a>
+              <a href="author.html#68">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>We already have it for the checks that we can read a value not from
+an address but instead from a cfg entry. So let's do the same for
+DYN_VAL_ADDR!
+
+Example: Warzone 2100: read the max. build points for a Structure
+         from Structure stats
+---
+ src/cfgentry.h    |    2 ++
+ src/cfgparser.cpp |   39 ++++++++++++++++++++++++++++-----------
+ src/ugtrain.cpp   |   35 +++++++++++++++++++++++++++++------
+ 3 files changed, 59 insertions(+), 17 deletions(-)
+
+diff --git a/src/cfgentry.h b/src/cfgentry.h
+index baa0552..200e67c 100644
+--- a/src/cfgentry.h
++++ b/src/cfgentry.h
+@@ -109,6 +109,8 @@ public:
+ 	i64 value;
+ 	i64 old_val;      // for static memory only
+ 
++	// get value from other cfg entry (DYN_VAL_ADDR)
++	CfgEntry *cfg_ref;
+ 	// more checks
+ 	list&lt;CheckEntry&gt; *checks;
+ 	// dynamic memory
+diff --git a/src/cfgparser.cpp b/src/cfgparser.cpp
+index 6daba0f..8d0d9e2 100644
+--- a/src/cfgparser.cpp
++++ b/src/cfgparser.cpp
+@@ -259,21 +259,32 @@ static i32 parse_data_type (string *line, u32 lnr, u32 *start,
+ 
+ /*
+  * This function parses a signed/unsigned integer or a float/double value
+- * from the config and also determines if a check is wanted.
++ * from the config and also determines if a check is wanted. Dynamic wish
++ * values are also possible.
+  *
+  * Attention: Hacky floats. A float has 4 bytes, a double has 8 bytes
+  *            and i64 has 8 bytes. Why not copy the float/double into the i64?!
+  *            We always parse floats as doubles here.
+  */
+-static i64 parse_value (string *line, u32 lnr, u32 *start, bool is_signed,
+-		        bool is_float, dynval_e *dynval, check_e *check, u32 i)
++static i64 parse_value (string *line, u32 lnr, u32 *start,
++			list&lt;CfgEntry&gt; *cfg, CfgEntry *cfg_en, CheckEntry *chk_en,
++			dynval_e *dynval, check_e *check, u32 i)
+ {
+ 	u32 lidx;
+ 	i64 ret = 0;
+ 	double tmp_dval;
++	bool is_signed = false, is_float = false;
+ 	bool dynval_detected = false;
+ 	string tmp_str;
+ 
++	if (cfg_en) {
++		is_signed = cfg_en-&gt;is_signed;
++		is_float = cfg_en-&gt;is_float;
++	} else if (chk_en) {
++		is_signed = chk_en-&gt;is_signed;
++		is_float = chk_en-&gt;is_float;
++	}
++
+ 	lidx = *start;
+ 	if (!check)
+ 		goto skip_check;
+@@ -329,7 +340,13 @@ skip_check:
+ 		} else if (tmp_str == &quot;always&quot;) {
+ 			*dynval = DYN_VAL_PTR_ALWAYS;
+ 		} else {
+-			cfg_parse_err(line, lnr, lidx);
++			if (!cfg || !cfg_en)
++				cfg_parse_err(line, lnr, lidx);
++			// So you want a cfg value reference?
++			cfg_en-&gt;cfg_ref = find_cfg_en(cfg, &amp;tmp_str);
++			if (!cfg_en-&gt;cfg_ref)
++				cfg_parse_err(line, lnr, lidx);
++			*dynval = DYN_VAL_ADDR;
+ 		}
+ 		goto out;
+ 
+@@ -461,8 +478,8 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			chk_en.size = parse_data_type(&amp;line, lnr, &amp;start,
+ 				&amp;chk_en.is_signed, &amp;chk_en.is_float);
+ 			for (i = 0; i &lt; MAX_CHK_VALS; i++)
+-				chk_en.value[i] = parse_value(&amp;line, lnr, &amp;start, chk_en.is_signed,
+-					chk_en.is_float, NULL, &amp;chk_en.check[i], i);
++				chk_en.value[i] = parse_value(&amp;line, lnr, &amp;start, cfg,
++					NULL, &amp;chk_en, NULL, &amp;chk_en.check[i], i);
+ 			chk_en.check[MAX_CHK_VALS] = CHECK_END;
+ 			chk_lp-&gt;push_back(chk_en);
+ 			break;
+@@ -475,7 +492,7 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			dynmem_enp-&gt;name = parse_value_name(&amp;line, lnr,
+ 				&amp;start, NULL);
+ 			dynmem_enp-&gt;mem_size = parse_value(&amp;line, lnr,
+-				&amp;start, false, false, NULL, NULL, 0);
++				&amp;start, NULL, NULL, NULL, NULL, NULL, 0);
+ 			dynmem_enp-&gt;code_addr = parse_address(cfg, NULL, &amp;line, lnr, &amp;start);
+ 			dynmem_enp-&gt;stack_offs = parse_address(cfg, NULL, &amp;line, lnr, &amp;start);
+ 			dynmem_enp-&gt;v_maddr.clear();
+@@ -499,7 +516,7 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 			ptrmem_enp-&gt;name = parse_value_name(&amp;line, lnr,
+ 				&amp;start, NULL);
+ 			ptrmem_enp-&gt;mem_size = parse_value(&amp;line, lnr,
+-				&amp;start, false, false, NULL, NULL, 0);
++				&amp;start, NULL, NULL, NULL, NULL, NULL, 0);
+ 			break;
+ 
+ 		case NAME_PTRMEM_END:
+@@ -531,7 +548,7 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 				cfg_parse_err(&amp;line, lnr, start);
+ 
+ 			if (parse_value(&amp;line, lnr, &amp;start,
+-					false, false, NULL, NULL, 0))
++					NULL, NULL, NULL, NULL, NULL, 0))
+ 				opt-&gt;adp_required = true;
+ 			opt-&gt;adp_req_line = lnr;
+ 			break;
+@@ -579,8 +596,8 @@ list&lt;CfgEntry*&gt; *read_config (string *path,
+ 				cfg_en.ptrtgt = NULL;
+ 			}
+ 
+-			cfg_en.value = parse_value(&amp;line, lnr, &amp;start, cfg_en.is_signed,
+-				cfg_en.is_float, &amp;cfg_en.dynval, &amp;cfg_en.check, 0);
++			cfg_en.value = parse_value(&amp;line, lnr, &amp;start, cfg, &amp;cfg_en,
++				NULL, &amp;cfg_en.dynval, &amp;cfg_en.check, 0);
+ 			if (cfg_en.dynval == DYN_VAL_ADDR)
+ 				cfg_en.val_addr = (void *) cfg_en.value;
+ 			if (in_dynmem)
+diff --git a/src/ugtrain.cpp b/src/ugtrain.cpp
+index 2c8de1d..d6f9546 100644
+--- a/src/ugtrain.cpp
++++ b/src/ugtrain.cpp
+@@ -436,12 +436,33 @@ static i32 check_memory (CheckEntry chk_en, u8 *chk_buf, u32 i)
+ 	}
+ }
+ 
++static inline i32 handle_cfg_ref (CfgEntry *cfg_ref, u8 *buf)
++{
++	DynMemEntry *dynmem;
++
++	if (cfg_ref-&gt;dynmem) {
++		dynmem = cfg_ref-&gt;dynmem;
++		if (cfg_ref-&gt;v_oldval.size() &lt;= 0)
++			goto err;
++		memcpy(buf, &amp;cfg_ref-&gt;v_oldval[dynmem-&gt;obj_idx], sizeof(i64));
++	} else if (cfg_ref-&gt;ptrmem &amp;&amp; cfg_ref-&gt;ptrmem-&gt;dynmem) {
++		dynmem = cfg_ref-&gt;ptrmem-&gt;dynmem;
++		if (cfg_ref-&gt;v_oldval.size() &lt;= 0)
++			goto err;
++		memcpy(buf, &amp;cfg_ref-&gt;v_oldval[dynmem-&gt;obj_idx], sizeof(i64));
++	} else {
++		memcpy(buf, &amp;cfg_ref-&gt;old_val, sizeof(i64));
++	}
++	return 0;
++err:
++	return -1;
++}
++
+ template &lt;typename T&gt;
+ static void change_mem_val (pid_t pid, CfgEntry *cfg_en, T value, u8 *buf, void *mem_offs)
+ {
+ 	list&lt;CheckEntry&gt; *chk_lp = cfg_en-&gt;checks;
+ 	list&lt;CheckEntry&gt;::iterator it;
+-	DynMemEntry *dynmem;
+ 	u8 chk_buf[sizeof(i64)];
+ 	void *mem_addr;
+ 	u32 i;
+@@ -452,21 +473,8 @@ static void change_mem_val (pid_t pid, CfgEntry *cfg_en, T value, u8 *buf, void
+ 	if (chk_lp) {
+ 		for (it = chk_lp-&gt;begin(); it != chk_lp-&gt;end(); it++) {
+ 			if (it-&gt;cfg_ref) {
+-				if (it-&gt;cfg_ref-&gt;dynmem) {
+-					dynmem = it-&gt;cfg_ref-&gt;dynmem;
+-					if (it-&gt;cfg_ref-&gt;v_oldval.size() &lt;= 0)
+-						continue;
+-					memcpy(chk_buf, &amp;it-&gt;cfg_ref-&gt;v_oldval[
+-						dynmem-&gt;obj_idx], sizeof(i64));
+-				} else if (it-&gt;cfg_ref-&gt;ptrmem &amp;&amp; it-&gt;cfg_ref-&gt;ptrmem-&gt;dynmem) {
+-					dynmem = it-&gt;cfg_ref-&gt;ptrmem-&gt;dynmem;
+-					if (it-&gt;cfg_ref-&gt;v_oldval.size() &lt;= 0)
+-						continue;
+-					memcpy(chk_buf, &amp;it-&gt;cfg_ref-&gt;v_oldval[
+-						dynmem-&gt;obj_idx], sizeof(i64));
+-				} else {
+-					memcpy(chk_buf, &amp;it-&gt;cfg_ref-&gt;old_val, sizeof(i64));
+-				}
++				if (handle_cfg_ref(it-&gt;cfg_ref, chk_buf) != 0)
++					continue;
+ 			} else {
+ 				mem_addr = PTR_ADD(void *, mem_offs, it-&gt;addr);
+ 
+@@ -514,13 +522,20 @@ static void handle_dynval (pid_t pid, CfgEntry *cfg_en, T read_val,
+ 	    read_val &lt; *value) {
+ 		*value = read_val;
+ 	} else if (cfg_en-&gt;dynval == DYN_VAL_ADDR) {
+-		mem_addr = PTR_ADD(void *, mem_offs, cfg_en-&gt;val_addr);
+-		if (memread(pid, mem_addr, buf, sizeof(i64)) != 0) {
+-			cerr &lt;&lt; &quot;PTRACE READ MEMORY ERROR PID[&quot;
+-			     &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
+-			exit(-1);
++		if (cfg_en-&gt;cfg_ref) {
++			if (handle_cfg_ref(cfg_en-&gt;cfg_ref, bufp) != 0)
++				*value = 0;
++			else
++				*value = *(T *) bufp;
++		} else {
++			mem_addr = PTR_ADD(void *, mem_offs, cfg_en-&gt;val_addr);
++			if (memread(pid, mem_addr, buf, sizeof(i64)) != 0) {
++				cerr &lt;&lt; &quot;PTRACE READ MEMORY ERROR PID[&quot;
++				     &lt;&lt; pid &lt;&lt; &quot;]!&quot; &lt;&lt; endl;
++				exit(-1);
++			}
++			*value = *(T *) bufp;
+ 		}
+-		*value = *(T *)bufp;
+ 	}
+ }
+ 
+-- 
+1.7.9.5
+
+</PRE>
+
+
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000067.html">[Ugtrain-devel] [PATCH 2/2] examples: warzone2100: 32-bit: cheat	Cyborg and VTOL factories
+</A></li>
+	<LI>Next message: <A HREF="000070.html">[Ugtrain-devel] [PATCH V2] ugtrain: introduce dynval from cfg entry	support
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#68">[ date ]</a>
+              <a href="thread.html#68">[ thread ]</a>
+              <a href="subject.html#68">[ subject ]</a>
+              <a href="author.html#68">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/ugtrain-devel">More information about the Ugtrain-devel
+mailing list</a><br>
+</body></html>
